@@ -61,11 +61,41 @@ struct Connection: Codable, Identifiable {
     let avatarUrl: String?
     let status: String? // online, offline, away
     let lastSeen: String?
+    let connectionStatus: String? // pending, accepted, rejected
+    let isIncoming: Bool? // true if this is an incoming request, false if outgoing
 }
 
 struct ConnectionsResponse: Codable {
     let success: Bool
     let connections: [Connection]
+    let message: String?
+}
+
+struct ConnectionRequest: Codable {
+    let username: String
+}
+
+struct ConnectionRequestResponse: Codable {
+    let success: Bool
+    let message: String?
+    let connection_id: String?
+}
+
+struct AcceptConnectionRequest: Codable {
+    let connection_id: String
+}
+
+struct AcceptConnectionResponse: Codable {
+    let success: Bool
+    let message: String?
+}
+
+struct RejectConnectionRequest: Codable {
+    let connection_id: String
+}
+
+struct RejectConnectionResponse: Codable {
+    let success: Bool
     let message: String?
 }
 
@@ -76,7 +106,7 @@ class AuthService {
     private let logger = Logger(subsystem: "com.vibecheck.app", category: "AuthService")
  
     // Update this URL to your actual API endpoint
-    private let baseURL = "https://accurate-pangolin-radically.ngrok-free.app/api"
+    private let baseURL = "https://vibecheckapi.01z.io/api"
     
     // Store authentication token
     private var authToken: String?
@@ -349,6 +379,294 @@ class AuthService {
     var isAuthenticated: Bool {
         return authToken != nil
     }
+    
+    func sendConnectionRequest(to username: String, completion: @escaping (Result<ConnectionRequestResponse, AuthError>) -> Void) {
+        logger.info("📤 Starting connection request to username: \(username)")
+        
+        guard let url = URL(string: "\(baseURL)/connections") else {
+            logger.error("❌ Invalid URL: \(self.baseURL)/connections")
+            completion(.failure(.invalidURL))
+            return
+        }
+        
+        logger.info("📡 Making request to: \(url.absoluteString)")
+
+        let connectionRequest = ConnectionRequest(username: username)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "ngrok-skip-browser-warning") // For ngrok
+        
+        // Add authorization header if we have a token
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            logger.info("🔑 Added auth token to request")
+        } else {
+            logger.warning("⚠️ No auth token available")
+            completion(.failure(.serverError("Not authenticated")))
+            return
+        }
+        
+        logger.info("📝 Request headers: \(request.allHTTPHeaderFields ?? [:])")
+
+        do {
+            let requestBody = try JSONEncoder().encode(connectionRequest)
+            request.httpBody = requestBody
+            
+            if let bodyString = String(data: requestBody, encoding: .utf8) {
+                logger.info("📤 Request body: \(bodyString)")
+            }
+        } catch {
+            logger.error("❌ Failed to encode request: \(error.localizedDescription)")
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                self.logger.error("❌ Network error: \(error.localizedDescription)")
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+ 
+            guard let httpResponse = response as? HTTPURLResponse else {
+                self.logger.error("❌ Invalid HTTP response")
+                completion(.failure(.invalidResponse))
+                return
+            }
+            
+            self.logger.info("📥 Response status code: \(httpResponse.statusCode)")
+            self.logger.info("📋 Response headers: \(httpResponse.allHeaderFields)")
+ 
+            guard let data = data else {
+                self.logger.error("❌ No data in response")
+                completion(.failure(.noData))
+                return
+            }
+            
+            // Log raw response data
+            if let responseString = String(data: data, encoding: .utf8) {
+                self.logger.info("📄 Raw response: \(responseString)")
+            }
+ 
+            do {
+                let connectionResponse = try JSONDecoder().decode(ConnectionRequestResponse.self, from: data)
+                self.logger.info("✅ Successfully decoded response: success=\(connectionResponse.success), message=\(connectionResponse.message ?? "nil")")
+ 
+                if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
+                    self.logger.info("🎉 Connection request sent successfully!")
+                    completion(.success(connectionResponse))
+                } else {
+                    let errorMessage = connectionResponse.message ?? "Failed to send connection request"
+                    self.logger.error("❌ Server error (\(httpResponse.statusCode)): \(errorMessage)")
+                    completion(.failure(.serverError(errorMessage)))
+                }
+            } catch {
+                self.logger.error("❌ Failed to decode response: \(error.localizedDescription)")
+                // Try to parse error response
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let errorMessage = errorDict["message"] as? String {
+                    self.logger.info("📝 Parsed error message: \(errorMessage)")
+                    completion(.failure(.serverError(errorMessage)))
+                } else {
+                    completion(.failure(.invalidResponse))
+                }
+            }
+        }.resume()
+    }
+    
+    func acceptConnectionRequest(connectionId: String, completion: @escaping (Result<AcceptConnectionResponse, AuthError>) -> Void) {
+        logger.info("✅ Starting accept connection request: \(connectionId)")
+        
+        guard let url = URL(string: "\(baseURL)/connections/accept") else {
+            logger.error("❌ Invalid URL: \(self.baseURL)/connections/accept")
+            completion(.failure(.invalidURL))
+            return
+        }
+        
+        logger.info("📡 Making request to: \(url.absoluteString)")
+
+        let acceptRequest = AcceptConnectionRequest(connection_id: connectionId)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "ngrok-skip-browser-warning") // For ngrok
+        
+        // Add authorization header if we have a token
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            logger.info("🔑 Added auth token to request")
+        } else {
+            logger.warning("⚠️ No auth token available")
+            completion(.failure(.serverError("Not authenticated")))
+            return
+        }
+        
+        logger.info("📝 Request headers: \(request.allHTTPHeaderFields ?? [:])")
+
+        do {
+            let requestBody = try JSONEncoder().encode(acceptRequest)
+            request.httpBody = requestBody
+            
+            if let bodyString = String(data: requestBody, encoding: .utf8) {
+                logger.info("📤 Request body: \(bodyString)")
+            }
+        } catch {
+            logger.error("❌ Failed to encode request: \(error.localizedDescription)")
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                self.logger.error("❌ Network error: \(error.localizedDescription)")
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+ 
+            guard let httpResponse = response as? HTTPURLResponse else {
+                self.logger.error("❌ Invalid HTTP response")
+                completion(.failure(.invalidResponse))
+                return
+            }
+            
+            self.logger.info("📥 Response status code: \(httpResponse.statusCode)")
+            self.logger.info("📋 Response headers: \(httpResponse.allHeaderFields)")
+ 
+            guard let data = data else {
+                self.logger.error("❌ No data in response")
+                completion(.failure(.noData))
+                return
+            }
+            
+            // Log raw response data
+            if let responseString = String(data: data, encoding: .utf8) {
+                self.logger.info("📄 Raw response: \(responseString)")
+            }
+ 
+            do {
+                let acceptResponse = try JSONDecoder().decode(AcceptConnectionResponse.self, from: data)
+                self.logger.info("✅ Successfully decoded response: success=\(acceptResponse.success), message=\(acceptResponse.message ?? "nil")")
+ 
+                if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
+                    self.logger.info("🎉 Connection request accepted successfully!")
+                    completion(.success(acceptResponse))
+                } else {
+                    let errorMessage = acceptResponse.message ?? "Failed to accept connection request"
+                    self.logger.error("❌ Server error (\(httpResponse.statusCode)): \(errorMessage)")
+                    completion(.failure(.serverError(errorMessage)))
+                }
+            } catch {
+                self.logger.error("❌ Failed to decode response: \(error.localizedDescription)")
+                // Try to parse error response
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let errorMessage = errorDict["message"] as? String {
+                    self.logger.info("📝 Parsed error message: \(errorMessage)")
+                    completion(.failure(.serverError(errorMessage)))
+                } else {
+                    completion(.failure(.invalidResponse))
+                }
+            }
+        }.resume()
+    }
+    
+    func rejectConnectionRequest(connectionId: String, completion: @escaping (Result<RejectConnectionResponse, AuthError>) -> Void) {
+        logger.info("❌ Starting reject connection request: \(connectionId)")
+        
+        guard let url = URL(string: "\(baseURL)/connections/reject") else {
+            logger.error("❌ Invalid URL: \(self.baseURL)/connections/reject")
+            completion(.failure(.invalidURL))
+            return
+        }
+        
+        logger.info("📡 Making request to: \(url.absoluteString)")
+
+        let rejectRequest = RejectConnectionRequest(connection_id: connectionId)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "ngrok-skip-browser-warning") // For ngrok
+        
+        // Add authorization header if we have a token
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            logger.info("🔑 Added auth token to request")
+        } else {
+            logger.warning("⚠️ No auth token available")
+            completion(.failure(.serverError("Not authenticated")))
+            return
+        }
+        
+        logger.info("📝 Request headers: \(request.allHTTPHeaderFields ?? [:])")
+
+        do {
+            let requestBody = try JSONEncoder().encode(rejectRequest)
+            request.httpBody = requestBody
+            
+            if let bodyString = String(data: requestBody, encoding: .utf8) {
+                logger.info("📤 Request body: \(bodyString)")
+            }
+        } catch {
+            logger.error("❌ Failed to encode request: \(error.localizedDescription)")
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                self.logger.error("❌ Network error: \(error.localizedDescription)")
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+ 
+            guard let httpResponse = response as? HTTPURLResponse else {
+                self.logger.error("❌ Invalid HTTP response")
+                completion(.failure(.invalidResponse))
+                return
+            }
+            
+            self.logger.info("📥 Response status code: \(httpResponse.statusCode)")
+            self.logger.info("📋 Response headers: \(httpResponse.allHeaderFields)")
+ 
+            guard let data = data else {
+                self.logger.error("❌ No data in response")
+                completion(.failure(.noData))
+                return
+            }
+            
+            // Log raw response data
+            if let responseString = String(data: data, encoding: .utf8) {
+                self.logger.info("📄 Raw response: \(responseString)")
+            }
+ 
+            do {
+                let rejectResponse = try JSONDecoder().decode(RejectConnectionResponse.self, from: data)
+                self.logger.info("✅ Successfully decoded response: success=\(rejectResponse.success), message=\(rejectResponse.message ?? "nil")")
+ 
+                if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
+                    self.logger.info("🎉 Connection request rejected successfully!")
+                    completion(.success(rejectResponse))
+                } else {
+                    let errorMessage = rejectResponse.message ?? "Failed to reject connection request"
+                    self.logger.error("❌ Server error (\(httpResponse.statusCode)): \(errorMessage)")
+                    completion(.failure(.serverError(errorMessage)))
+                }
+            } catch {
+                self.logger.error("❌ Failed to decode response: \(error.localizedDescription)")
+                // Try to parse error response
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let errorMessage = errorDict["message"] as? String {
+                    self.logger.info("📝 Parsed error message: \(errorMessage)")
+                    completion(.failure(.serverError(errorMessage)))
+                } else {
+                    completion(.failure(.invalidResponse))
+                }
+            }
+        }.resume()
+    }
  
     // For development/testing - simulate API call
     func signUpMock(username: String, password: String, completion: @escaping (Result<SignUpResponse, AuthError>) -> Void) {
@@ -430,7 +748,9 @@ class AuthService {
                     displayName: "Alice Johnson",
                     avatarUrl: nil,
                     status: "online",
-                    lastSeen: nil
+                    lastSeen: nil,
+                    connectionStatus: "accepted",
+                    isIncoming: nil
                 ),
                 Connection(
                     id: "2",
@@ -438,7 +758,9 @@ class AuthService {
                     displayName: "Bob Smith",
                     avatarUrl: nil,
                     status: "away",
-                    lastSeen: "2 hours ago"
+                    lastSeen: "2 hours ago",
+                    connectionStatus: "accepted",
+                    isIncoming: nil
                 ),
                 Connection(
                     id: "3",
@@ -446,7 +768,9 @@ class AuthService {
                     displayName: "Charlie Brown",
                     avatarUrl: nil,
                     status: "offline",
-                    lastSeen: "Yesterday"
+                    lastSeen: "Yesterday",
+                    connectionStatus: "pending",
+                    isIncoming: true
                 ),
                 Connection(
                     id: "4",
@@ -454,7 +778,29 @@ class AuthService {
                     displayName: "Diana Ross",
                     avatarUrl: nil,
                     status: "online",
-                    lastSeen: nil
+                    lastSeen: nil,
+                    connectionStatus: "accepted",
+                    isIncoming: nil
+                ),
+                Connection(
+                    id: "5",
+                    username: "eve_tester",
+                    displayName: "Eve Wilson",
+                    avatarUrl: nil,
+                    status: "away",
+                    lastSeen: "1 hour ago",
+                    connectionStatus: "pending",
+                    isIncoming: true
+                ),
+                Connection(
+                    id: "6",
+                    username: "frank_dev",
+                    displayName: nil,
+                    avatarUrl: nil,
+                    status: "offline",
+                    lastSeen: "3 days ago",
+                    connectionStatus: "pending",
+                    isIncoming: false
                 )
             ]
             
@@ -462,6 +808,128 @@ class AuthService {
                 success: true,
                 connections: mockConnections,
                 message: "Connections retrieved successfully"
+            )
+            completion(.success(response))
+        }
+    }
+    
+    // For development/testing - simulate connection request API call
+    func sendConnectionRequestMock(to username: String, completion: @escaping (Result<ConnectionRequestResponse, AuthError>) -> Void) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
+            // Check if authenticated
+            guard self.authToken != nil else {
+                completion(.failure(.serverError("Not authenticated")))
+                return
+            }
+            
+            // Validate username
+            let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedUsername.isEmpty {
+                completion(.failure(.serverError("Username is required")))
+                return
+            }
+            
+            // Simulate various scenarios
+            switch trimmedUsername.lowercased() {
+            case "nonexistent", "notfound":
+                completion(.failure(.serverError("User not found")))
+                return
+            case "self", "me":
+                completion(.failure(.serverError("You cannot send a friend request to yourself")))
+                return
+            case "alreadyfriend":
+                completion(.failure(.serverError("You are already friends with this user")))
+                return
+            case "pending":
+                completion(.failure(.serverError("Friend request already pending")))
+                return
+            default:
+                break
+            }
+            
+            // Success case
+            let response = ConnectionRequestResponse(
+                success: true,
+                message: "Friend request sent to \(trimmedUsername)!",
+                connection_id: UUID().uuidString
+            )
+            completion(.success(response))
+        }
+    }
+    
+    // For development/testing - simulate accept connection request API call
+    func acceptConnectionRequestMock(connectionId: String, completion: @escaping (Result<AcceptConnectionResponse, AuthError>) -> Void) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) {
+            // Check if authenticated
+            guard self.authToken != nil else {
+                completion(.failure(.serverError("Not authenticated")))
+                return
+            }
+            
+            // Validate connection ID
+            if connectionId.isEmpty {
+                completion(.failure(.serverError("Connection ID is required")))
+                return
+            }
+            
+            // Simulate various scenarios
+            switch connectionId {
+            case "invalid_id":
+                completion(.failure(.serverError("Invalid connection ID")))
+                return
+            case "already_accepted":
+                completion(.failure(.serverError("Connection request already accepted")))
+                return
+            case "expired":
+                completion(.failure(.serverError("Connection request has expired")))
+                return
+            default:
+                break
+            }
+            
+            // Success case
+            let response = AcceptConnectionResponse(
+                success: true,
+                message: "Friend request accepted successfully!"
+            )
+            completion(.success(response))
+        }
+    }
+    
+    // For development/testing - simulate reject connection request API call
+    func rejectConnectionRequestMock(connectionId: String, completion: @escaping (Result<RejectConnectionResponse, AuthError>) -> Void) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) {
+            // Check if authenticated
+            guard self.authToken != nil else {
+                completion(.failure(.serverError("Not authenticated")))
+                return
+            }
+            
+            // Validate connection ID
+            if connectionId.isEmpty {
+                completion(.failure(.serverError("Connection ID is required")))
+                return
+            }
+            
+            // Simulate various scenarios
+            switch connectionId {
+            case "invalid_id":
+                completion(.failure(.serverError("Invalid connection ID")))
+                return
+            case "already_rejected":
+                completion(.failure(.serverError("Connection request already rejected")))
+                return
+            case "expired":
+                completion(.failure(.serverError("Connection request has expired")))
+                return
+            default:
+                break
+            }
+            
+            // Success case
+            let response = RejectConnectionResponse(
+                success: true,
+                message: "Friend request rejected successfully!"
             )
             completion(.success(response))
         }

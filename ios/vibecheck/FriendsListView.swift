@@ -11,6 +11,9 @@ struct FriendsListView: View {
     @State private var connections: [Connection] = []
     @State private var isLoading = true
     @State private var errorMessage = ""
+    @State private var showingAddFriend = false
+    @State private var acceptingConnectionId: String? = nil
+    @State private var rejectingConnectionId: String? = nil
     
     // Callback for sign out
     var onSignOut: () -> Void
@@ -79,7 +82,17 @@ struct FriendsListView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(connections) { connection in
-                        ConnectionRow(connection: connection)
+                        ConnectionRow(
+                            connection: connection,
+                            isAccepting: acceptingConnectionId == connection.id,
+                            isRejecting: rejectingConnectionId == connection.id,
+                            onAcceptConnection: { connectionId in
+                                acceptConnection(connectionId: connectionId)
+                            },
+                            onRejectConnection: { connectionId in
+                                rejectConnection(connectionId: connectionId)
+                            }
+                        )
                     }
                     .refreshable {
                         loadConnections()
@@ -89,6 +102,15 @@ struct FriendsListView: View {
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showingAddFriend = true
+                    } label: {
+                        Image(systemName: "person.badge.plus")
+                            .foregroundColor(.blue)
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button("Refresh") {
@@ -101,6 +123,13 @@ struct FriendsListView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
+            }
+            .sheet(isPresented: $showingAddFriend) {
+                AddFriendView()
+                    .onDisappear {
+                        // Refresh connections when returning from add friend
+                        loadConnections()
+                    }
             }
         }
         .onAppear {
@@ -126,10 +155,54 @@ struct FriendsListView: View {
             }
         }
     }
+    
+    private func acceptConnection(connectionId: String) {
+        acceptingConnectionId = connectionId
+        
+        // Using production API
+        AuthService.shared.acceptConnectionRequest(connectionId: connectionId) { result in
+            DispatchQueue.main.async {
+                acceptingConnectionId = nil
+                
+                switch result {
+                case .success(_):
+                    // Refresh connections to show updated status
+                    loadConnections()
+                case .failure(let error):
+                    // Could show error alert here if needed
+                    print("Failed to accept connection: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func rejectConnection(connectionId: String) {
+        rejectingConnectionId = connectionId
+        
+        // Using production API
+        AuthService.shared.rejectConnectionRequest(connectionId: connectionId) { result in
+            DispatchQueue.main.async {
+                rejectingConnectionId = nil
+                
+                switch result {
+                case .success(_):
+                    // Remove from local list and refresh connections
+                    connections.removeAll { $0.id == connectionId }
+                case .failure(let error):
+                    // Could show error alert here if needed
+                    print("Failed to reject connection: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
 }
 
 struct ConnectionRow: View {
     let connection: Connection
+    let isAccepting: Bool
+    let isRejecting: Bool
+    let onAcceptConnection: (String) -> Void
+    let onRejectConnection: (String) -> Void
     
     var body: some View {
         HStack(spacing: 12) {
@@ -160,15 +233,69 @@ struct ConnectionRow: View {
                     
                     Spacer()
                     
-                    // Status indicator
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 8, height: 8)
-                        
-                        Text(statusText)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    // Different UI based on connection status and type
+                    if connection.connectionStatus?.lowercased() == "pending" {
+                        if connection.isIncoming == true {
+                            // Incoming request - show simple accept/reject buttons
+                            HStack(spacing: 6) {
+                                Button {
+                                    onAcceptConnection(connection.id)
+                                } label: {
+                                    if isAccepting {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .tint(.white)
+                                    } else {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                }
+                                .frame(width: 32, height: 32)
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(16)
+                                .disabled(isAccepting || isRejecting)
+                                
+                                Button {
+                                    onRejectConnection(connection.id)
+                                } label: {
+                                    if isRejecting {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .tint(.white)
+                                    } else {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                }
+                                .frame(width: 32, height: 32)
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .cornerRadius(16)
+                                .disabled(isAccepting || isRejecting)
+                            }
+                        } else {
+                            // Outgoing request - show "Request Sent"
+                            Text("REQUEST SENT")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                    } else {
+                        // Accepted friend - show status indicator
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 8, height: 8)
+                            
+                            Text(statusText)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 
@@ -211,4 +338,25 @@ struct ConnectionRow: View {
 
 #Preview {
     FriendsListView(onSignOut: {})
+}
+
+#Preview("Connection Row") {
+    List {
+        ConnectionRow(
+            connection: Connection(
+                id: "1",
+                username: "test_user",
+                displayName: "Test User",
+                avatarUrl: nil,
+                status: "online",
+                lastSeen: nil,
+                connectionStatus: "pending",
+                isIncoming: true
+            ),
+            isAccepting: false,
+            isRejecting: false,
+            onAcceptConnection: { _ in },
+            onRejectConnection: { _ in }
+        )
+    }
 }
