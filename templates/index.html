@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Vibecheck User Registration API</h1>
+<p>API for mobile apps with <strong>{{total_users}}</strong> registered users.</p>
+
+<div style="margin-top: 2rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div style="padding: 1.5rem; background-color: #e8f4f8; border-left: 4px solid #2c3e50; text-align: center;">
+            <h3 style="font-size: 2rem; margin-bottom: 0.5rem; color: #2c3e50;">{{total_users}}</h3>
+            <p><strong>Total Users</strong></p>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 2rem;">
+    {% if users.len() > 0 %}
+        <h2>Registered Users</h2>
+        <div style="margin-top: 1rem;">
+            {% for user in users %}
+                <div style="padding: 1.5rem; background-color: #f8f9fa; border: 1px solid #e9ecef; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                        <div style="flex: 1;">
+                            <h3 style="color: #2c3e50; margin-bottom: 0.5rem; font-size: 1.3rem;">{{user.username}}</h3>
+                            <p style="color: #6c757d; font-size: 0.9rem; margin-bottom: 0.5rem;">User ID: <code style="background-color: #e9ecef; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.8rem;">{{user.id}}</code></p>
+                        </div>
+                        <div style="margin-left: 1rem;">
+                            <span style="background-color: #28a745; color: white; padding: 0.4rem 0.8rem; border-radius: 20px; font-size: 0.9rem; font-weight: bold;">✓ Active</span>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                        <div>
+                            <p><strong>Registered:</strong> {{user.created_at}}</p>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div style="padding: 2rem; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-top: 2rem;">
+            <h3>No Users Registered</h3>
+            <p>No users have registered yet. Use the API endpoint <code>/api/register</code> to register new users.</p>
+        </div>
+    {% endif %}
+</div>
+
+<div style="margin-top: 2rem; padding: 1rem; background-color: #d4edda; border-left: 4px solid #28a745; border-radius: 4px;">
+    <h3>API Features</h3>
+    <ul style="margin-left: 2rem; margin-top: 1rem;">
+        <li><strong>User Registration</strong> - Secure user registration with Argon2 password hashing</li>
+        <li><strong>JSON API</strong> - REST API endpoints for mobile app integration</li>
+        <li><strong>Validation</strong> - Username and password validation with proper error handling</li>
+    </ul>
+    <h4 style="margin-top: 1.5rem;">API Usage</h4>
+    <p>Register a new user by making a POST request to <code>/api/register</code> with JSON payload:</p>
+    <pre style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.9rem;">
+curl -X POST http://127.0.0.1:3000/api/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "your_username", "password": "your_password"}'</pre>
+</div>
+{% endblock %}
