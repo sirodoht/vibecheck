@@ -38,6 +38,14 @@ struct AdminTemplate {
     next_user_name: String,
     pending_connections: Vec<AdminConnection>,
     accepted_connections: Vec<AdminConnection>,
+    user_pairs: Vec<UserPair>,
+}
+
+#[derive(Serialize)]
+pub struct UserPair {
+    pub from_username: String,
+    pub to_username: String,
+    pub connection_exists: bool,
 }
 
 #[derive(Template)]
@@ -227,11 +235,34 @@ async fn admin(State(db): State<AppState>) -> impl IntoResponse {
         .cloned()
         .collect();
 
+    // Create user pairs with connection status
+    let mut user_pairs = Vec::new();
+    for user1 in &users {
+        for user2 in &users {
+            if user1.username != user2.username {
+                // Check if any connection exists between these users (in either direction)
+                let connection_exists = admin_connections.iter().any(|conn| {
+                    (conn.initiator_username == user1.username
+                        && conn.target_username == user2.username)
+                        || (conn.initiator_username == user2.username
+                            && conn.target_username == user1.username)
+                });
+
+                user_pairs.push(UserPair {
+                    from_username: user1.username.clone(),
+                    to_username: user2.username.clone(),
+                    connection_exists,
+                });
+            }
+        }
+    }
+
     let template = AdminTemplate {
         users,
         next_user_name,
         pending_connections,
         accepted_connections,
+        user_pairs,
     };
     Html(template.render().unwrap())
 }
@@ -649,6 +680,8 @@ async fn admin_create_connection(
     State(db): State<AppState>,
     Path((from_username, to_username)): Path<(String, String)>,
 ) -> impl IntoResponse {
+    let mut error_message = None;
+
     // Get the user ID for the "from" user
     let from_user = db
         .get_user_by_username(&from_username)
@@ -657,7 +690,43 @@ async fn admin_create_connection(
 
     if let Some(user) = from_user {
         // Create connection request
-        let _ = db.create_connection(&user.id, &to_username).await;
+        match db.create_connection(&user.id, &to_username).await {
+            Ok(_) => {
+                println!(
+                    "Successfully created connection request: {} → {}",
+                    from_username, to_username
+                );
+            }
+            Err(e) => {
+                let error_str = e.to_string();
+                if error_str.contains("Connection already exists") {
+                    println!(
+                        "Connection already exists between {} and {}",
+                        from_username, to_username
+                    );
+                    error_message = Some(format!(
+                        "Connection between {} and {} already exists",
+                        from_username, to_username
+                    ));
+                } else if error_str.contains("User not found") {
+                    println!("User {} not found", to_username);
+                    error_message = Some(format!("User {} not found", to_username));
+                } else {
+                    println!(
+                        "Error creating connection {} → {}: {}",
+                        from_username, to_username, error_str
+                    );
+                    error_message = Some(format!("Error: {}", error_str));
+                }
+            }
+        }
+    } else {
+        error_message = Some(format!("User {} not found", from_username));
+    }
+
+    // For now, just log the error and redirect. In a real app, you'd want to pass this to the template
+    if let Some(msg) = error_message {
+        println!("Admin connection creation error: {}", msg);
     }
 
     // Redirect back to admin page

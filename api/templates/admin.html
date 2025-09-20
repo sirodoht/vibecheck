@@ -57,17 +57,22 @@
                 <div style="margin-bottom: 1rem;">
                     <p style="color: #6c757d; margin-bottom: 1rem;">Quick connections between users:</p>
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem;">
-                        {% for user1 in users %}
-                            {% for user2 in users %}
-                                {% if user1.username != user2.username %}
-                                    <a href="/admin/create-connection/{{user1.username}}/{{user2.username}}"
-                                       style="display: block; padding: 0.5rem; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; text-decoration: none; color: #495057; font-size: 0.9rem; text-align: center;">
-                                        {{user1.username}} → {{user2.username}}
-                                    </a>
-                                {% endif %}
-                            {% endfor %}
+                        {% for user_pair in user_pairs %}
+                            {% if user_pair.connection_exists %}
+                                <div style="display: block; padding: 0.5rem; background-color: #e9ecef; border: 1px solid #ced4da; border-radius: 4px; color: #6c757d; font-size: 0.9rem; text-align: center; font-style: italic;">
+                                    {{user_pair.from_username}} → {{user_pair.to_username}} (exists)
+                                </div>
+                            {% else %}
+                                <a href="/admin/create-connection/{{user_pair.from_username}}/{{user_pair.to_username}}"
+                                   style="display: block; padding: 0.5rem; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; text-decoration: none; color: #495057; font-size: 0.9rem; text-align: center;">
+                                    {{user_pair.from_username}} → {{user_pair.to_username}}
+                                </a>
+                            {% endif %}
                         {% endfor %}
                     </div>
+                    <p style="color: #6c757d; font-size: 0.8rem; margin-top: 0.5rem; font-style: italic;">
+                        Note: Only one connection can exist between any two users (in either direction)
+                    </p>
                 </div>
             {% else %}
                 <p style="color: #6c757d; font-style: italic;">Need at least 2 users to create connections</p>
