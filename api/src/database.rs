@@ -412,7 +412,7 @@ impl Database {
             };
             users_map
                 .entry(user1_username.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(friend1);
 
             // Add user1 as friend of user2
@@ -421,10 +421,7 @@ impl Database {
                 connection_id,
                 created_at,
             };
-            users_map
-                .entry(user2_username)
-                .or_insert_with(Vec::new)
-                .push(friend2);
+            users_map.entry(user2_username).or_default().push(friend2);
         }
 
         // Convert to Vec<UserWithFriends>
@@ -473,7 +470,7 @@ impl Database {
         }
 
         // Check if the user is trying to accept their own request
-        if user_id == &initiated_by {
+        if user_id == initiated_by {
             return Err("You cannot accept your own connection request".into());
         }
 
