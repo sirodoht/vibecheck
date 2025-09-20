@@ -1,0 +1,12 @@
+# Xcode user data
+xcuserdata/
+
+# Build artifacts
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+
+# Dependencies
+Pods/
+.build/
