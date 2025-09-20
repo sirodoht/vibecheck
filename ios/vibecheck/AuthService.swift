@@ -54,15 +54,60 @@ struct SignInResponse: Codable {
     let token: String?
 }
 
-struct Connection: Codable, Identifiable {
+struct APIConnection: Codable {
     let id: String
+    let user1_id: String
+    let user2_id: String
+    let other_username: String
+    let status: String // pending, accepted, rejected
+    let initiated_by: String
+    let created_at: String
+}
+
+struct Connection: Codable, Identifiable {
+    let id: String // This will be the connection ID
     let username: String
     let displayName: String?
     let avatarUrl: String?
-    let status: String? // online, offline, away
+    let status: String? // online, offline, away (for display)
     let lastSeen: String?
     let connectionStatus: String? // pending, accepted, rejected
     let isIncoming: Bool? // true if this is an incoming request, false if outgoing
+    
+    // Convert from API response
+    init(from apiConnection: APIConnection, currentUserId: String) {
+        self.id = apiConnection.id
+        self.username = apiConnection.other_username
+        self.displayName = nil // Don't show display name, only username with @
+        
+        self.avatarUrl = nil
+        
+        // Add some variety to online status for accepted connections
+        if apiConnection.status == "accepted" {
+            let statuses = ["online", "away", "offline"]
+            self.status = statuses[abs(apiConnection.other_username.hashValue) % statuses.count]
+            
+            if self.status == "away" {
+                self.lastSeen = "2 hours ago"
+            } else if self.status == "offline" {
+                self.lastSeen = "Yesterday"
+            } else {
+                self.lastSeen = nil
+            }
+        } else {
+            self.status = "offline"
+            self.lastSeen = nil
+        }
+        
+        self.connectionStatus = apiConnection.status
+        self.isIncoming = apiConnection.initiated_by != currentUserId
+    }
+}
+
+struct APIConnectionsResponse: Codable {
+    let success: Bool
+    let connections: [APIConnection]
+    let message: String?
 }
 
 struct ConnectionsResponse: Codable {
@@ -108,8 +153,9 @@ class AuthService {
     // Update this URL to your actual API endpoint
     private let baseURL = "https://vibecheckapi.01z.io/api"
     
-    // Store authentication token
+    // Store authentication token and user ID
     private var authToken: String?
+    private var currentUserId: String?
  
     private init() {}
 
@@ -187,11 +233,16 @@ class AuthService {
                 }
             } catch {
                 self.logger.error("❌ Failed to decode response: \(error.localizedDescription)")
-                // Try to parse error response
-                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let errorMessage = errorDict["message"] as? String {
-                    self.logger.info("📝 Parsed error message: \(errorMessage)")
-                    completion(.failure(.serverError(errorMessage)))
+                // Try to parse error response - check for both "message" and "error" fields
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let errorMessage = errorDict["message"] as? String ?? errorDict["error"] as? String
+                    if let errorMessage = errorMessage {
+                        self.logger.info("📝 Parsed error message: \(errorMessage)")
+                        completion(.failure(.serverError(errorMessage)))
+                    } else {
+                        self.logger.error("❌ No error message found in response")
+                        completion(.failure(.invalidResponse))
+                    }
                 } else {
                     completion(.failure(.invalidResponse))
                 }
@@ -265,10 +316,14 @@ class AuthService {
  
                 if httpResponse.statusCode == 200 {
                     self.logger.info("🎉 Sign in successful!")
-                    // Store auth token for future API calls
+                    // Store auth token and user ID for future API calls
                     if let token = signInResponse.token {
                         self.authToken = token
                         self.logger.info("🔑 Auth token stored")
+                    }
+                    if let userId = signInResponse.userId {
+                        self.currentUserId = userId
+                        self.logger.info("👤 User ID stored: \(userId)")
                     }
                     completion(.success(signInResponse))
                 } else {
@@ -278,11 +333,16 @@ class AuthService {
                 }
             } catch {
                 self.logger.error("❌ Failed to decode response: \(error.localizedDescription)")
-                // Try to parse error response
-                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let errorMessage = errorDict["message"] as? String {
-                    self.logger.info("📝 Parsed error message: \(errorMessage)")
-                    completion(.failure(.serverError(errorMessage)))
+                // Try to parse error response - check for both "message" and "error" fields
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let errorMessage = errorDict["message"] as? String ?? errorDict["error"] as? String
+                    if let errorMessage = errorMessage {
+                        self.logger.info("📝 Parsed error message: \(errorMessage)")
+                        completion(.failure(.serverError(errorMessage)))
+                    } else {
+                        self.logger.error("❌ No error message found in response")
+                        completion(.failure(.invalidResponse))
+                    }
                 } else {
                     completion(.failure(.invalidResponse))
                 }
@@ -344,14 +404,27 @@ class AuthService {
             }
  
             do {
-                let connectionsResponse = try JSONDecoder().decode(ConnectionsResponse.self, from: data)
-                self.logger.info("✅ Successfully decoded response: success=\(connectionsResponse.success), connections count=\(connectionsResponse.connections.count)")
+                let apiResponse = try JSONDecoder().decode(APIConnectionsResponse.self, from: data)
+                self.logger.info("✅ Successfully decoded response: success=\(apiResponse.success), connections count=\(apiResponse.connections.count)")
  
                 if httpResponse.statusCode == 200 {
                     self.logger.info("🎉 Connections fetched successfully!")
+                    
+                    // Convert API connections to our Connection model
+                    let userId = self.currentUserId ?? ""
+                    let connections = apiResponse.connections.map { apiConnection in
+                        Connection(from: apiConnection, currentUserId: userId)
+                    }
+                    
+                    let connectionsResponse = ConnectionsResponse(
+                        success: apiResponse.success,
+                        connections: connections,
+                        message: apiResponse.message
+                    )
+                    
                     completion(.success(connectionsResponse))
                 } else {
-                    let errorMessage = connectionsResponse.message ?? "Failed to fetch connections"
+                    let errorMessage = apiResponse.message ?? "Failed to fetch connections"
                     self.logger.error("❌ Server error (\(httpResponse.statusCode)): \(errorMessage)")
                     completion(.failure(.serverError(errorMessage)))
                 }
@@ -373,6 +446,7 @@ class AuthService {
     func signOut() {
         logger.info("🚪 Signing out user")
         authToken = nil
+        currentUserId = nil
     }
     
     // Check if user is authenticated
@@ -464,11 +538,16 @@ class AuthService {
                 }
             } catch {
                 self.logger.error("❌ Failed to decode response: \(error.localizedDescription)")
-                // Try to parse error response
-                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let errorMessage = errorDict["message"] as? String {
-                    self.logger.info("📝 Parsed error message: \(errorMessage)")
-                    completion(.failure(.serverError(errorMessage)))
+                // Try to parse error response - check for both "message" and "error" fields
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let errorMessage = errorDict["message"] as? String ?? errorDict["error"] as? String
+                    if let errorMessage = errorMessage {
+                        self.logger.info("📝 Parsed error message: \(errorMessage)")
+                        completion(.failure(.serverError(errorMessage)))
+                    } else {
+                        self.logger.error("❌ No error message found in response")
+                        completion(.failure(.invalidResponse))
+                    }
                 } else {
                     completion(.failure(.invalidResponse))
                 }
@@ -725,8 +804,9 @@ class AuthService {
                 userId: UUID().uuidString,
                 token: "mock_jwt_token_\(UUID().uuidString)"
             )
-            // Store mock token
+            // Store mock token and user ID
             self.authToken = response.token
+            self.currentUserId = response.userId
             completion(.success(response))
         }
     }
@@ -740,69 +820,60 @@ class AuthService {
                 return
             }
             
-            // Mock connections data
-            let mockConnections = [
-                Connection(
+            // Mock connections data using new structure
+            let userId = self.currentUserId ?? "mock_user_id"
+            let mockApiConnections = [
+                APIConnection(
                     id: "1",
-                    username: "alice_dev",
-                    displayName: "Alice Johnson",
-                    avatarUrl: nil,
-                    status: "online",
-                    lastSeen: nil,
-                    connectionStatus: "accepted",
-                    isIncoming: nil
+                    user1_id: userId,
+                    user2_id: "alice_id",
+                    other_username: "alice",
+                    status: "accepted",
+                    initiated_by: "alice_id",
+                    created_at: "2025-09-20T10:00:00Z"
                 ),
-                Connection(
+                APIConnection(
                     id: "2",
-                    username: "bob_coder",
-                    displayName: "Bob Smith",
-                    avatarUrl: nil,
-                    status: "away",
-                    lastSeen: "2 hours ago",
-                    connectionStatus: "accepted",
-                    isIncoming: nil
+                    user1_id: userId,
+                    user2_id: "bob_id",
+                    other_username: "bob",
+                    status: "accepted",
+                    initiated_by: userId,
+                    created_at: "2025-09-19T15:30:00Z"
                 ),
-                Connection(
+                APIConnection(
                     id: "3",
-                    username: "charlie_designer",
-                    displayName: "Charlie Brown",
-                    avatarUrl: nil,
-                    status: "offline",
-                    lastSeen: "Yesterday",
-                    connectionStatus: "pending",
-                    isIncoming: true
+                    user1_id: "charlie_id",
+                    user2_id: userId,
+                    other_username: "charlie",
+                    status: "pending",
+                    initiated_by: "charlie_id",
+                    created_at: "2025-09-20T16:00:00Z"
                 ),
-                Connection(
+                APIConnection(
                     id: "4",
-                    username: "diana_pm",
-                    displayName: "Diana Ross",
-                    avatarUrl: nil,
-                    status: "online",
-                    lastSeen: nil,
-                    connectionStatus: "accepted",
-                    isIncoming: nil
+                    user1_id: userId,
+                    user2_id: "eve_id",
+                    other_username: "eve",
+                    status: "pending",
+                    initiated_by: "eve_id",
+                    created_at: "2025-09-20T14:00:00Z"
                 ),
-                Connection(
+                APIConnection(
                     id: "5",
-                    username: "eve_tester",
-                    displayName: "Eve Wilson",
-                    avatarUrl: nil,
-                    status: "away",
-                    lastSeen: "1 hour ago",
-                    connectionStatus: "pending",
-                    isIncoming: true
-                ),
-                Connection(
-                    id: "6",
-                    username: "frank_dev",
-                    displayName: nil,
-                    avatarUrl: nil,
-                    status: "offline",
-                    lastSeen: "3 days ago",
-                    connectionStatus: "pending",
-                    isIncoming: false
+                    user1_id: userId,
+                    user2_id: "frank_id",
+                    other_username: "frank",
+                    status: "pending",
+                    initiated_by: userId,
+                    created_at: "2025-09-20T12:00:00Z"
                 )
             ]
+            
+            // Convert to Connection objects
+            let mockConnections = mockApiConnections.map { apiConnection in
+                Connection(from: apiConnection, currentUserId: userId)
+            }
             
             let response = ConnectionsResponse(
                 success: true,

@@ -211,23 +211,15 @@ struct ConnectionRow: View {
                 .fill(statusColor.opacity(0.2))
                 .frame(width: 50, height: 50)
                 .overlay {
-                    if let avatarUrl = connection.avatarUrl, !avatarUrl.isEmpty {
-                        // In a real app, you'd use AsyncImage or similar
-                        Text(String(connection.displayName?.prefix(1) ?? connection.username.prefix(1)).uppercased())
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(statusColor)
-                    } else {
-                        Text(String(connection.displayName?.prefix(1) ?? connection.username.prefix(1)).uppercased())
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(statusColor)
-                    }
+                    Text(String(connection.username.prefix(1)).uppercased())
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(statusColor)
                 }
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(connection.displayName ?? connection.username)
+                    Text("@\(connection.username)")
                         .font(.headline)
                         .foregroundColor(.primary)
                     
@@ -298,12 +290,6 @@ struct ConnectionRow: View {
                         }
                     }
                 }
-                
-                if connection.displayName != nil {
-                    Text("@\(connection.username)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
             }
         }
         .padding(.vertical, 4)
@@ -341,18 +327,19 @@ struct ConnectionRow: View {
 }
 
 #Preview("Connection Row") {
+    let apiConnection = APIConnection(
+        id: "1",
+        user1_id: "other_user",
+        user2_id: "current_user",
+        other_username: "user4",
+        status: "pending",
+        initiated_by: "other_user",
+        created_at: "2025-09-20T10:00:00Z"
+    )
+    
     List {
         ConnectionRow(
-            connection: Connection(
-                id: "1",
-                username: "test_user",
-                displayName: "Test User",
-                avatarUrl: nil,
-                status: "online",
-                lastSeen: nil,
-                connectionStatus: "pending",
-                isIncoming: true
-            ),
+            connection: Connection(from: apiConnection, currentUserId: "current_user"),
             isAccepting: false,
             isRejecting: false,
             onAcceptConnection: { _ in },
