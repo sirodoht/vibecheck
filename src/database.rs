@@ -229,4 +229,135 @@ impl Database {
             .verify_password(password.as_bytes(), &parsed_hash)
             .is_ok())
     }
+
+    // Session management methods
+    pub async fn create_session(
+        &self,
+        user_id: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        // Generate a simple session token (UUID)
+        let token = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let session_id = uuid::Uuid::new_v4().to_string();
+
+        // Insert session into database (no expiration)
+        sqlx::query("INSERT INTO sessions (id, user_id, token, created_at) VALUES (?, ?, ?, ?)")
+            .bind(&session_id)
+            .bind(user_id)
+            .bind(&token)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(token)
+    }
+
+    pub async fn validate_session(
+        &self,
+        token: &str,
+    ) -> Result<Option<crate::User>, Box<dyn std::error::Error>> {
+        let session_row = sqlx::query(
+            "SELECT s.user_id, u.username, u.password_hash, u.created_at
+             FROM sessions s
+             JOIN users u ON s.user_id = u.id
+             WHERE s.token = ?",
+        )
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = session_row {
+            let user = crate::User {
+                id: row.get("user_id"),
+                username: row.get("username"),
+                password_hash: row.get("password_hash"),
+                created_at: row.get("created_at"),
+            };
+            Ok(Some(user))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Connection management methods
+    pub async fn create_connection(
+        &self,
+        user_id: &str,
+        friend_username: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        // Find the friend by username
+        let friend_row = sqlx::query("SELECT id FROM users WHERE username = ?")
+            .bind(friend_username)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        let friend_id = match friend_row {
+            Some(row) => row.get::<String, _>("id"),
+            None => return Err("User not found".into()),
+        };
+
+        // Check if user is trying to connect to themselves
+        if user_id == friend_id {
+            return Err("Cannot connect to yourself".into());
+        }
+
+        // Check if connection already exists
+        let existing_connection =
+            sqlx::query("SELECT id FROM connections WHERE user_id = ? AND friend_id = ?")
+                .bind(user_id)
+                .bind(&friend_id)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        if existing_connection.is_some() {
+            return Err("Connection already exists".into());
+        }
+
+        // Create new connection
+        let connection_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO connections (id, user_id, friend_id, status, created_at, updated_at) VALUES (?, ?, ?, 'accepted', ?, ?)"
+        )
+        .bind(&connection_id)
+        .bind(user_id)
+        .bind(&friend_id)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(connection_id)
+    }
+
+    pub async fn get_user_connections(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::Connection>, Box<dyn std::error::Error>> {
+        let rows = sqlx::query(
+            "SELECT c.id, c.user_id, c.friend_id, u.username as friend_username, c.status, c.created_at
+             FROM connections c
+             JOIN users u ON c.friend_id = u.id
+             WHERE c.user_id = ? AND c.status = 'accepted'
+             ORDER BY c.created_at DESC"
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let connections = rows
+            .into_iter()
+            .map(|row| crate::Connection {
+                id: row.get("id"),
+                user_id: row.get("user_id"),
+                friend_id: row.get("friend_id"),
+                friend_username: row.get("friend_username"),
+                status: row.get("status"),
+                created_at: row.get("created_at"),
+            })
+            .collect();
+
+        Ok(connections)
+    }
 }

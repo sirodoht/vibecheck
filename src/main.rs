@@ -2,7 +2,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json},
     routing::{get, post},
 };
@@ -46,9 +46,58 @@ pub struct RegisterResponse {
     pub user_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct LoginResponse {
+    pub success: bool,
+    pub message: String,
+    pub user: Option<UserInfo>,
+    pub token: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct UserInfo {
+    pub id: String,
+    pub username: String,
+    pub created_at: String,
+}
+
 #[derive(Serialize)]
 pub struct ErrorResponse {
     pub error: String,
+}
+
+#[derive(sqlx::FromRow, Serialize)]
+pub struct Connection {
+    pub id: String,
+    pub user_id: String,
+    pub friend_id: String,
+    pub friend_username: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct AddConnectionRequest {
+    pub username: String,
+}
+
+#[derive(Serialize)]
+pub struct AddConnectionResponse {
+    pub success: bool,
+    pub message: String,
+    pub connection_id: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ConnectionsResponse {
+    pub success: bool,
+    pub connections: Vec<Connection>,
 }
 
 // Web Handler functions
@@ -111,6 +160,205 @@ async fn register_user(
     }
 }
 
+async fn login_user(
+    State(db): State<AppState>,
+    Json(request): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Validate input
+    if request.username.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Username cannot be empty".to_string(),
+            }),
+        ));
+    }
+
+    if request.password.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Password cannot be empty".to_string(),
+            }),
+        ));
+    }
+
+    // Authenticate user and create session
+    let user = match db.verify_user(&request.username, &request.password).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Invalid username or password".to_string(),
+                }),
+            ));
+        }
+        Err(_) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Authentication failed".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Create and store session token in database
+    let token = match db.create_session(&user.id).await {
+        Ok(token) => token,
+        Err(e) => {
+            eprintln!("Session creation error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Could not create session".to_string(),
+                }),
+            ));
+        }
+    };
+
+    Ok(Json(LoginResponse {
+        success: true,
+        message: "Login successful".to_string(),
+        user: Some(UserInfo {
+            id: user.id,
+            username: user.username,
+            created_at: user.created_at,
+        }),
+        token: Some(token),
+    }))
+}
+
+// Helper function to extract token from Authorization header
+fn extract_token_from_headers(headers: &HeaderMap) -> Result<String, String> {
+    let auth_header = headers
+        .get("Authorization")
+        .ok_or("Missing Authorization header")?
+        .to_str()
+        .map_err(|_| "Invalid Authorization header")?;
+
+    if let Some(token) = auth_header.strip_prefix("Bearer ") {
+        Ok(token.to_string())
+    } else {
+        Err("Invalid Authorization format. Expected 'Bearer <token>'".to_string())
+    }
+}
+
+// Authenticated endpoint to add a connection/friend
+async fn add_connection(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AddConnectionRequest>,
+) -> Result<Json<AddConnectionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Extract and validate session token
+    let token = match extract_token_from_headers(&headers) {
+        Ok(token) => token,
+        Err(e) => return Err((StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))),
+    };
+
+    // Validate session and get user
+    let user = match db.validate_session(&token).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Invalid session token".to_string(),
+                }),
+            ));
+        }
+        Err(_) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Session validation failed".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Validate input
+    if request.username.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Username cannot be empty".to_string(),
+            }),
+        ));
+    }
+
+    // Create the connection
+    match db.create_connection(&user.id, &request.username).await {
+        Ok(connection_id) => Ok(Json(AddConnectionResponse {
+            success: true,
+            message: format!("Successfully connected to {}", request.username),
+            connection_id: Some(connection_id),
+        })),
+        Err(e) => {
+            let error_msg = e.to_string();
+            let status_code = if error_msg.contains("User not found") {
+                StatusCode::NOT_FOUND
+            } else if error_msg.contains("Connection already exists")
+                || error_msg.contains("Cannot connect to yourself")
+            {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+
+            Err((status_code, Json(ErrorResponse { error: error_msg })))
+        }
+    }
+}
+
+// Authenticated endpoint to get user's connections
+async fn get_connections(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<ConnectionsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Extract and validate session token
+    let token = match extract_token_from_headers(&headers) {
+        Ok(token) => token,
+        Err(e) => return Err((StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))),
+    };
+
+    // Validate session and get user
+    let user = match db.validate_session(&token).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Invalid session token".to_string(),
+                }),
+            ));
+        }
+        Err(_) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Session validation failed".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Get user's connections
+    match db.get_user_connections(&user.id).await {
+        Ok(connections) => Ok(Json(ConnectionsResponse {
+            success: true,
+            connections,
+        })),
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to retrieve connections".to_string(),
+            }),
+        )),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Check command line arguments
@@ -149,6 +397,9 @@ async fn main() {
         let app = Router::new()
             .route("/", get(index))
             .route("/api/register", post(register_user))
+            .route("/api/login", post(login_user))
+            .route("/api/connections", post(add_connection))
+            .route("/api/connections", get(get_connections))
             .with_state(app_state);
 
         // Start the server
