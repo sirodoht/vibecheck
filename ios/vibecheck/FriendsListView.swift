@@ -112,8 +112,8 @@ struct FriendsListView: View {
         isLoading = true
         errorMessage = ""
         
-        // Use mock API for testing - change to fetchConnections for production
-        AuthService.shared.fetchConnectionsMock { result in
+        // Using production API
+        AuthService.shared.fetchConnections { result in
             DispatchQueue.main.async {
                 isLoading = false
                 

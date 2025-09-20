@@ -20,8 +20,8 @@ class AuthenticationManager: ObservableObject {
     }
     
     func signIn(username: String, password: String, completion: @escaping (Result<SignInResponse, AuthError>) -> Void) {
-        // Use mock for testing - change to signIn for production
-        AuthService.shared.signInMock(username: username, password: password) { [weak self] result in
+        // Using production API
+        AuthService.shared.signIn(username: username, password: password) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
