@@ -1,0 +1,128 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Admin Panel</h1>
+<p>Manage users and connections for testing and administration.</p>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem;">
+    <!-- User Management -->
+    <div style="background-color: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 1px solid #dee2e6;">
+        <h2 style="color: #2c3e50; margin-bottom: 1rem;">User Management</h2>
+
+        <div style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Create New User</h3>
+            <a href="/admin/create-user/{{next_user_name}}" style="display: inline-block; background-color: #28a745; color: white; text-decoration: none; padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: bold; margin-bottom: 1rem;">
+                Create Next User ({{next_user_name}})
+            </a>
+            <p style="color: #6c757d; font-size: 0.9rem;">Default password: "password123"</p>
+        </div>
+
+        <div>
+            <h3 style="margin-bottom: 1rem;">Current Users ({{users.len()}})</h3>
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; background-color: white;">
+                {% if users.len() > 0 %}
+                    {% for user in users %}
+                        <div style="padding: 0.75rem; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>{{user.username}}</strong>
+                                <br>
+                                <small style="color: #6c757d;">{{user.id}}</small>
+                            </div>
+                            <small style="color: #6c757d;">{{user.created_at}}</small>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="padding: 1rem; text-align: center; color: #6c757d;">
+                        No users yet
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Management -->
+    <div style="background-color: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 1px solid #dee2e6;">
+        <h2 style="color: #2c3e50; margin-bottom: 1rem;">Connection Management</h2>
+
+        <div style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Create Connection Request</h3>
+            {% if users.len() >= 2 %}
+                <div style="margin-bottom: 1rem;">
+                    <p style="color: #6c757d; margin-bottom: 1rem;">Quick connections between users:</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem;">
+                        {% for user1 in users %}
+                            {% for user2 in users %}
+                                {% if user1.username != user2.username %}
+                                    <a href="/admin/create-connection/{{user1.username}}/{{user2.username}}"
+                                       style="display: block; padding: 0.5rem; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; text-decoration: none; color: #495057; font-size: 0.9rem; text-align: center;">
+                                        {{user1.username}} → {{user2.username}}
+                                    </a>
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+                </div>
+            {% else %}
+                <p style="color: #6c757d; font-style: italic;">Need at least 2 users to create connections</p>
+            {% endif %}
+        </div>
+
+        <div>
+            <h3 style="margin-bottom: 1rem;">Pending Requests ({{pending_connections.len()}})</h3>
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; background-color: white;">
+                {% if pending_connections.len() > 0 %}
+                    {% for connection in pending_connections %}
+                        <div style="padding: 1rem; border-bottom: 1px solid #f1f3f4;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                <div>
+                                    <strong>{{connection.initiator_username}}</strong> → <strong>{{connection.target_username}}</strong>
+                                    <br>
+                                    <small style="color: #6c757d;">{{connection.created_at}}</small>
+                                </div>
+                                <span style="background-color: #ffc107; color: #212529; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold;">Pending</span>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <a href="/admin/accept-connection/{{connection.id}}"
+                                   style="display: inline-block; background-color: #28a745; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.9rem;">
+                                    Accept
+                                </a>
+                                <a href="/admin/reject-connection/{{connection.id}}"
+                                   style="display: inline-block; background-color: #dc3545; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.9rem;">
+                                    Reject
+                                </a>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="padding: 1rem; text-align: center; color: #6c757d;">
+                        No pending requests
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics -->
+<div style="margin-top: 2rem; padding: 1.5rem; background-color: #d4edda; border-left: 4px solid #28a745; border-radius: 4px;">
+    <h3>System Statistics</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+        <div style="text-align: center;">
+            <h4 style="font-size: 1.5rem; color: #2c3e50;">{{users.len()}}</h4>
+            <p>Total Users</p>
+        </div>
+        <div style="text-align: center;">
+            <h4 style="font-size: 1.5rem; color: #2c3e50;">{{pending_connections.len()}}</h4>
+            <p>Pending Requests</p>
+        </div>
+        <div style="text-align: center;">
+            <h4 style="font-size: 1.5rem; color: #2c3e50;">{{accepted_connections.len()}}</h4>
+            <p>Accepted Connections</p>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 4px;">
+    <p style="color: #6c757d; margin: 0;"><strong>Admin Features:</strong> Create test users, manage connections, and approve/reject requests for testing purposes.</p>
+</div>
+{% endblock %}

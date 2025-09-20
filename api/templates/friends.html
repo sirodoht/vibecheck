@@ -1,21 +1,21 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<h1>Users and Their Friends</h1>
-<p>All users with their connections - <strong>{{total_users_with_friends}}</strong> users have friends.</p>
+<h1>Users and Their Connections</h1>
+<p>All users with their connections (friends and pending requests) - <strong>{{total_users_with_friends}}</strong> users have connections.</p>
 
 <div style="margin-top: 2rem;">
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
         <div style="padding: 1.5rem; background-color: #e8f4f8; border-left: 4px solid #2c3e50; text-align: center;">
             <h3 style="font-size: 2rem; margin-bottom: 0.5rem; color: #2c3e50;">{{total_users_with_friends}}</h3>
-            <p><strong>Users With Friends</strong></p>
+            <p><strong>Users With Connections</strong></p>
         </div>
     </div>
 </div>
 
 <div style="margin-top: 2rem;">
     {% if users_with_friends.len() > 0 %}
-        <h2>Users and Friends</h2>
+        <h2>Users and Connections</h2>
         <div style="margin-top: 1rem;">
             {% for user_with_friends in users_with_friends %}
                 <div style="padding: 1.5rem; background-color: #f8f9fa; border: 1px solid #e9ecef; margin-bottom: 1.5rem;">
@@ -24,7 +24,7 @@
                             {{user_with_friends.username}}
                         </h3>
                         <p style="color: #6c757d; font-size: 0.9rem;">
-                            {{user_with_friends.friends.len()}} friend{% if user_with_friends.friends.len() != 1 %}s{% endif %}
+                            {{user_with_friends.friends.len()}} connection{% if user_with_friends.friends.len() != 1 %}s{% endif %}
                         </p>
                     </div>
 
@@ -33,13 +33,25 @@
                             <div style="padding: 0.75rem; background-color: white; border: 1px solid #dee2e6; border-radius: 4px; margin-bottom: 0.5rem;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
                                     <div style="flex: 1;">
-                                        <span style="color: #28a745; font-weight: bold; font-size: 1.1rem;">{{friend.username}}</span>
+                                        {% if friend.status == "accepted" %}
+                                            <span style="color: #28a745; font-weight: bold; font-size: 1.1rem;">{{friend.username}}</span>
+                                        {% else %}
+                                            <span style="color: #ffc107; font-weight: bold; font-size: 1.1rem;">{{friend.username}}</span>
+                                        {% endif %}
                                         <p style="color: #6c757d; font-size: 0.8rem; margin: 0.25rem 0 0 0;">
-                                            Connected: {{friend.created_at}}
+                                            {% if friend.status == "accepted" %}
+                                                Connected: {{friend.created_at}}
+                                            {% else %}
+                                                Pending since: {{friend.created_at}}
+                                            {% endif %}
                                         </p>
                                     </div>
                                     <div style="margin-left: 1rem;">
-                                        <span style="background-color: #28a745; color: white; padding: 0.3rem 0.6rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold;">Friends</span>
+                                        {% if friend.status == "accepted" %}
+                                            <span style="background-color: #28a745; color: white; padding: 0.3rem 0.6rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold;">Friends</span>
+                                        {% else %}
+                                            <span style="background-color: #ffc107; color: #212529; padding: 0.3rem 0.6rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold;">Pending</span>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
@@ -50,7 +62,7 @@
         </div>
     {% else %}
         <div style="padding: 2rem; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-top: 2rem;">
-            <h3>No Friendships Yet</h3>
+            <h3>No Connections Yet</h3>
             <p>No users have connected yet. Users can add friends using the <code>/api/connections</code> endpoint.</p>
         </div>
     {% endif %}

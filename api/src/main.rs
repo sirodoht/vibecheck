@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json},
     routing::{get, post},
@@ -30,6 +30,15 @@ struct FriendsTemplate {
     total_users_with_friends: i64,
 }
 
+#[derive(Template)]
+#[template(path = "admin.html")]
+struct AdminTemplate {
+    users: Vec<User>,
+    next_user_name: String,
+    pending_connections: Vec<AdminConnection>,
+    accepted_connections: Vec<AdminConnection>,
+}
+
 #[derive(Serialize)]
 pub struct UserWithFriends {
     pub username: String,
@@ -40,6 +49,16 @@ pub struct UserWithFriends {
 pub struct Friend {
     pub username: String,
     pub connection_id: String,
+    pub created_at: String,
+    pub status: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AdminConnection {
+    pub id: String,
+    pub initiator_username: String,
+    pub target_username: String,
+    pub status: String,
     pub created_at: String,
 }
 
@@ -132,6 +151,8 @@ pub struct AcceptConnectionResponse {
     pub message: String,
 }
 
+// Admin-related structures (not needed anymore with path parameters)
+
 // Web Handler functions
 async fn index(State(db): State<AppState>) -> impl IntoResponse {
     let users = db.get_all_users().await.unwrap_or_default();
@@ -146,6 +167,35 @@ async fn friends(State(db): State<AppState>) -> impl IntoResponse {
     let template = FriendsTemplate {
         users_with_friends,
         total_users_with_friends,
+    };
+    Html(template.render().unwrap())
+}
+
+async fn admin(State(db): State<AppState>) -> impl IntoResponse {
+    let users = db.get_all_users().await.unwrap_or_default();
+
+    // Calculate next user name
+    let user_count = users.len();
+    let next_user_name = format!("user{}", user_count + 1);
+
+    // Get admin connections
+    let admin_connections = db.get_admin_connections().await.unwrap_or_default();
+    let pending_connections: Vec<AdminConnection> = admin_connections
+        .iter()
+        .filter(|c| c.status == "pending")
+        .cloned()
+        .collect();
+    let accepted_connections: Vec<AdminConnection> = admin_connections
+        .iter()
+        .filter(|c| c.status == "accepted")
+        .cloned()
+        .collect();
+
+    let template = AdminTemplate {
+        users,
+        next_user_name,
+        pending_connections,
+        accepted_connections,
     };
     Html(template.render().unwrap())
 }
@@ -462,6 +512,84 @@ async fn accept_connection(
     }
 }
 
+// Admin Handler functions
+#[axum::debug_handler]
+async fn admin_create_user(
+    State(db): State<AppState>,
+    Path(username): Path<String>,
+) -> impl IntoResponse {
+    let password = "password123";
+
+    match db.create_user(&username, password).await {
+        Ok(_) => {
+            // Redirect back to admin page
+            axum::response::Redirect::to("/admin")
+        }
+        Err(_) => {
+            // In case of error, still redirect back
+            axum::response::Redirect::to("/admin")
+        }
+    }
+}
+
+#[axum::debug_handler]
+async fn admin_create_connection(
+    State(db): State<AppState>,
+    Path((from_username, to_username)): Path<(String, String)>,
+) -> impl IntoResponse {
+    // Get the user ID for the "from" user
+    let from_user = db
+        .get_user_by_username(&from_username)
+        .await
+        .unwrap_or_default();
+
+    if let Some(user) = from_user {
+        // Create connection request
+        let _ = db.create_connection(&user.id, &to_username).await;
+    }
+
+    // Redirect back to admin page
+    axum::response::Redirect::to("/admin")
+}
+
+#[axum::debug_handler]
+async fn admin_accept_connection(
+    State(db): State<AppState>,
+    Path(connection_id): Path<String>,
+) -> impl IntoResponse {
+    // Get connection details to find the target user
+    let connection_info = db
+        .get_connection_info(&connection_id)
+        .await
+        .unwrap_or_default();
+
+    if let Some(info) = connection_info {
+        // Accept on behalf of the target user (the one who didn't initiate)
+        let target_user_id = if info.initiated_by == info.user1_id {
+            &info.user2_id
+        } else {
+            &info.user1_id
+        };
+
+        let _ = db.accept_connection(&connection_id, target_user_id).await;
+    }
+
+    // Redirect back to admin page
+    axum::response::Redirect::to("/admin")
+}
+
+#[axum::debug_handler]
+async fn admin_reject_connection(
+    State(db): State<AppState>,
+    Path(connection_id): Path<String>,
+) -> impl IntoResponse {
+    // Reject the connection
+    let _ = db.reject_connection(&connection_id).await;
+
+    // Redirect back to admin page
+    axum::response::Redirect::to("/admin")
+}
+
 #[tokio::main]
 async fn main() {
     // Parse command line arguments
@@ -561,6 +689,20 @@ async fn main() {
     let app = Router::new()
         .route("/", get(index))
         .route("/friends", get(friends))
+        .route("/admin", get(admin))
+        .route("/admin/create-user/{username}", get(admin_create_user))
+        .route(
+            "/admin/create-connection/{from}/{to}",
+            get(admin_create_connection),
+        )
+        .route(
+            "/admin/accept-connection/{id}",
+            get(admin_accept_connection),
+        )
+        .route(
+            "/admin/reject-connection/{id}",
+            get(admin_reject_connection),
+        )
         .route("/api/register", post(register_user))
         .route("/api/login", post(login_user))
         .route("/api/connections", post(add_connection))

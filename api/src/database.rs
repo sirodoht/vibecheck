@@ -381,14 +381,14 @@ impl Database {
     pub async fn get_users_with_friends(
         &self,
     ) -> Result<Vec<crate::UserWithFriends>, Box<dyn std::error::Error>> {
-        // Get all accepted connections and create bidirectional friendships
+        // Get all connections (accepted and pending) and create bidirectional friendships
         let rows = sqlx::query(
-            "SELECT c.id, c.user1_id, c.user2_id, c.created_at,
+            "SELECT c.id, c.user1_id, c.user2_id, c.created_at, c.status,
                     u1.username as user1_username, u2.username as user2_username
              FROM connections c
              JOIN users u1 ON c.user1_id = u1.id
              JOIN users u2 ON c.user2_id = u2.id
-             WHERE c.status = 'accepted'
+             WHERE c.status IN ('accepted', 'pending')
              ORDER BY c.created_at DESC",
         )
         .fetch_all(&self.pool)
@@ -403,12 +403,14 @@ impl Database {
             let user1_username: String = row.get("user1_username");
             let user2_username: String = row.get("user2_username");
             let created_at: String = row.get("created_at");
+            let status: String = row.get("status");
 
             // Add user2 as friend of user1
             let friend1 = crate::Friend {
                 username: user2_username.clone(),
                 connection_id: connection_id.clone(),
                 created_at: created_at.clone(),
+                status: status.clone(),
             };
             users_map
                 .entry(user1_username.clone())
@@ -420,6 +422,7 @@ impl Database {
                 username: user1_username,
                 connection_id,
                 created_at,
+                status,
             };
             users_map.entry(user2_username).or_default().push(friend2);
         }
@@ -484,4 +487,112 @@ impl Database {
 
         Ok(())
     }
+
+    // Admin helper methods
+    pub async fn get_user_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<crate::User>, Box<dyn std::error::Error>> {
+        let user_row = sqlx::query(
+            "SELECT id, username, password_hash, created_at FROM users WHERE username = ?",
+        )
+        .bind(username)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = user_row {
+            let user = crate::User {
+                id: row.get("id"),
+                username: row.get("username"),
+                password_hash: row.get("password_hash"),
+                created_at: row.get("created_at"),
+            };
+            Ok(Some(user))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn get_admin_connections(
+        &self,
+    ) -> Result<Vec<crate::AdminConnection>, Box<dyn std::error::Error>> {
+        let rows = sqlx::query(
+            "SELECT c.id, c.status, c.initiated_by, c.created_at,
+                    u1.username as user1_username, u2.username as user2_username,
+                    initiator.username as initiator_username
+             FROM connections c
+             JOIN users u1 ON c.user1_id = u1.id
+             JOIN users u2 ON c.user2_id = u2.id
+             JOIN users initiator ON c.initiated_by = initiator.id
+             ORDER BY c.created_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let connections = rows
+            .into_iter()
+            .map(|row| {
+                let user1_username: String = row.get("user1_username");
+                let user2_username: String = row.get("user2_username");
+                let initiator_username: String = row.get("initiator_username");
+
+                // Determine target user (the one who didn't initiate)
+                let target_username = if initiator_username == user1_username {
+                    user2_username
+                } else {
+                    user1_username
+                };
+
+                crate::AdminConnection {
+                    id: row.get("id"),
+                    initiator_username,
+                    target_username,
+                    status: row.get("status"),
+                    created_at: row.get("created_at"),
+                }
+            })
+            .collect();
+
+        Ok(connections)
+    }
+
+    pub async fn get_connection_info(
+        &self,
+        connection_id: &str,
+    ) -> Result<Option<ConnectionInfo>, Box<dyn std::error::Error>> {
+        let connection_row =
+            sqlx::query("SELECT user1_id, user2_id, initiated_by FROM connections WHERE id = ?")
+                .bind(connection_id)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        if let Some(row) = connection_row {
+            Ok(Some(ConnectionInfo {
+                user1_id: row.get("user1_id"),
+                user2_id: row.get("user2_id"),
+                initiated_by: row.get("initiated_by"),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn reject_connection(
+        &self,
+        connection_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Simply delete the connection to reject it
+        sqlx::query("DELETE FROM connections WHERE id = ?")
+            .bind(connection_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+}
+
+pub struct ConnectionInfo {
+    pub user1_id: String,
+    pub user2_id: String,
+    pub initiated_by: String,
 }
