@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Users and Their Friends</h1>
+<p>All users with their connections - <strong>{{total_users_with_friends}}</strong> users have friends.</p>
+
+<div style="margin-top: 2rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div style="padding: 1.5rem; background-color: #e8f4f8; border-left: 4px solid #2c3e50; text-align: center;">
+            <h3 style="font-size: 2rem; margin-bottom: 0.5rem; color: #2c3e50;">{{total_users_with_friends}}</h3>
+            <p><strong>Users With Friends</strong></p>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 2rem;">
+    {% if users_with_friends.len() > 0 %}
+        <h2>Users and Friends</h2>
+        <div style="margin-top: 1rem;">
+            {% for user_with_friends in users_with_friends %}
+                <div style="padding: 1.5rem; background-color: #f8f9fa; border: 1px solid #e9ecef; margin-bottom: 1.5rem;">
+                    <div style="margin-bottom: 1rem;">
+                        <h3 style="color: #2c3e50; margin-bottom: 0.5rem; font-size: 1.4rem; font-weight: bold;">
+                            {{user_with_friends.username}}
+                        </h3>
+                        <p style="color: #6c757d; font-size: 0.9rem;">
+                            {{user_with_friends.friends.len()}} friend{% if user_with_friends.friends.len() != 1 %}s{% endif %}
+                        </p>
+                    </div>
+
+                    <div style="margin-left: 1rem; border-left: 3px solid #007bff; padding-left: 1rem;">
+                        {% for friend in user_with_friends.friends %}
+                            <div style="padding: 0.75rem; background-color: white; border: 1px solid #dee2e6; border-radius: 4px; margin-bottom: 0.5rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="flex: 1;">
+                                        <span style="color: #28a745; font-weight: bold; font-size: 1.1rem;">{{friend.username}}</span>
+                                        <p style="color: #6c757d; font-size: 0.8rem; margin: 0.25rem 0 0 0;">
+                                            Connected: {{friend.created_at}}
+                                        </p>
+                                    </div>
+                                    <div style="margin-left: 1rem;">
+                                        <span style="background-color: #28a745; color: white; padding: 0.3rem 0.6rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold;">Friends</span>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div style="padding: 2rem; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-top: 2rem;">
+            <h3>No Friendships Yet</h3>
+            <p>No users have connected yet. Users can add friends using the <code>/api/connections</code> endpoint.</p>
+        </div>
+    {% endif %}
+</div>
+
+<div style="margin-top: 2rem; padding: 1rem; background-color: #d4edda; border-left: 4px solid #28a745; border-radius: 4px;">
+    <h3>Connection Features</h3>
+    <ul style="margin-left: 2rem; margin-top: 1rem;">
+        <li><strong>Send Friend Requests</strong> - Users can send connection requests to other users</li>
+        <li><strong>Accept Requests</strong> - Users must accept incoming connection requests</li>
+        <li><strong>Bidirectional Friendship</strong> - Each connection works both ways automatically</li>
+        <li><strong>View Connections</strong> - Users can view their own connections via API</li>
+    </ul>
+    <h4 style="margin-top: 1.5rem;">API Usage</h4>
+    <p>Send a connection request:</p>
+    <pre style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.9rem;">
+curl -X POST http://127.0.0.1:3000/api/connections \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"username": "friend_username"}'</pre>
+    <p style="margin-top: 1rem;">Accept a connection request:</p>
+    <pre style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.9rem;">
+curl -X POST http://127.0.0.1:3000/api/connections/accept \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"connection_id": "CONNECTION_ID_HERE"}'</pre>
+</div>
+{% endblock %}

@@ -7,8 +7,8 @@ Wants=network.target
 Type=simple
 User=deploy
 Group=www-data
-WorkingDirectory=/var/www/vibecheckapi
-ExecStart=/var/www/vibecheckapi/target/release/vibecheckapi --serve --port 3000 --database /var/www/vibecheckapi/vibecheckapi.db
+WorkingDirectory=/var/www/vibecheck/api
+ExecStart=/var/www/vibecheck/api/target/release/vibecheckapi --serve --port 4000 --database /var/www/vibecheck/api/vibecheckapi.db
 Restart=always
 RestartSec=5
 
