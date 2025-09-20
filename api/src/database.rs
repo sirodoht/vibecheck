@@ -343,7 +343,8 @@ impl Database {
         &self,
         user_id: &str,
     ) -> Result<Vec<crate::Connection>, Box<dyn std::error::Error>> {
-        // Get connections where user is either user1 or user2
+        // Get connections where others have requested friendship with this user
+        // (incoming requests only, not outgoing requests)
         let rows = sqlx::query(
             "SELECT c.id, c.user1_id, c.user2_id, c.status, c.initiated_by, c.created_at,
                     CASE 
@@ -353,9 +354,10 @@ impl Database {
              FROM connections c
              JOIN users u1 ON c.user1_id = u1.id
              JOIN users u2 ON c.user2_id = u2.id
-             WHERE (c.user1_id = ? OR c.user2_id = ?)
+             WHERE (c.user1_id = ? OR c.user2_id = ?) AND c.initiated_by != ?
              ORDER BY c.created_at DESC",
         )
+        .bind(user_id)
         .bind(user_id)
         .bind(user_id)
         .bind(user_id)
@@ -587,6 +589,32 @@ impl Database {
             .execute(&self.pool)
             .await?;
 
+        Ok(())
+    }
+
+    pub async fn delete_user(&self, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut tx = self.pool.begin().await?;
+
+        // Delete user's sessions first
+        sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Delete user's connections (both as user1 and user2)
+        sqlx::query("DELETE FROM connections WHERE user1_id = ? OR user2_id = ?")
+            .bind(user_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Delete the user
+        sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
         Ok(())
     }
 }

@@ -590,6 +590,18 @@ async fn admin_reject_connection(
     axum::response::Redirect::to("/admin")
 }
 
+#[axum::debug_handler]
+async fn admin_delete_user(
+    State(db): State<AppState>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    // Delete the user and all related data
+    let _ = db.delete_user(&user_id).await;
+
+    // Redirect back to admin page
+    axum::response::Redirect::to("/admin")
+}
+
 #[tokio::main]
 async fn main() {
     // Parse command line arguments
@@ -703,6 +715,7 @@ async fn main() {
             "/admin/reject-connection/{id}",
             get(admin_reject_connection),
         )
+        .route("/admin/delete-user/{user_id}", get(admin_delete_user))
         .route("/api/register", post(register_user))
         .route("/api/login", post(login_user))
         .route("/api/connections", post(add_connection))

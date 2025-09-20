@@ -28,7 +28,14 @@
                                 <br>
                                 <small style="color: #6c757d;">{{user.id}}</small>
                             </div>
-                            <small style="color: #6c757d;">{{user.created_at}}</small>
+                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                <small style="color: #6c757d;">{{user.created_at}}</small>
+                                <a href="/admin/delete-user/{{user.id}}"
+                                   onclick="return confirm('Are you sure you want to delete user {{user.username}}? This will also delete all their sessions and connections.')"
+                                   style="display: inline-block; background-color: #dc3545; color: white; text-decoration: none; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">
+                                    Delete
+                                </a>
+                            </div>
                         </div>
                     {% endfor %}
                 {% else %}

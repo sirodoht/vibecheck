@@ -15,25 +15,7 @@ The application automatically creates and manages a SQLite database (`vibechecka
 
 ## API Endpoints
 
-### 🏠 Web Interface
-
-#### Get Index Page
-```bash
-curl http://127.0.0.1:3000/
-```
-**Response:** HTML page displaying all registered users
-
-#### Get Friends Page
-```bash
-curl http://127.0.0.1:3000/friends
-```
-**Response:** HTML page showing all users and their accepted friendships
-
----
-
-### 👤 User Management
-
-#### Register User
+### Register User
 ```bash
 curl -X POST http://127.0.0.1:3000/api/register \
   -H "Content-Type: application/json" \
@@ -56,7 +38,7 @@ curl -X POST http://127.0.0.1:3000/api/register \
 }
 ```
 
-#### Login User
+### Login User
 ```bash
 curl -X POST http://127.0.0.1:3000/api/login \
   -H "Content-Type: application/json" \
@@ -84,9 +66,7 @@ curl -X POST http://127.0.0.1:3000/api/login \
 }
 ```
 
----
-
-### 🤝 Connections (Authenticated Endpoints)
+### 🤝 Connections
 
 > **Note:** All connection endpoints require authentication via `Authorization: Bearer <token>` header.
 
