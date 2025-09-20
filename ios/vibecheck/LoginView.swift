@@ -117,7 +117,7 @@ struct LoginView: View {
         // Call API
         AuthenticationManager.shared.signIn(username: username, password: password) { result in
             isLoading = false
-            
+
             switch result {
             case .success:
                 // Clear form - user will automatically navigate to friends list

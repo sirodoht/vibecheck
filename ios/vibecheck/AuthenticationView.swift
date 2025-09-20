@@ -14,7 +14,7 @@ enum AuthenticationMode {
 
 struct AuthenticationView: View {
     @State private var currentMode: AuthenticationMode = .login
-    
+
     var body: some View {
         NavigationView {
             Group {

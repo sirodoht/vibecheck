@@ -11,14 +11,14 @@ import Combine
 class AuthenticationManager: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: SignInResponse?
-    
+
     static let shared = AuthenticationManager()
-    
+
     private init() {
         // Check if user is already authenticated when app starts
         isAuthenticated = AuthService.shared.isAuthenticated
     }
-    
+
     func signIn(username: String, password: String, completion: @escaping (Result<SignInResponse, AuthError>) -> Void) {
         // Using production API
         AuthService.shared.signIn(username: username, password: password) { [weak self] result in
@@ -36,7 +36,7 @@ class AuthenticationManager: ObservableObject {
             }
         }
     }
-    
+
     func signOut() {
         AuthService.shared.signOut()
         isAuthenticated = false

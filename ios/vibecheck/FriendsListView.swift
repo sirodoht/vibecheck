@@ -14,10 +14,10 @@ struct FriendsListView: View {
     @State private var showingAddFriend = false
     @State private var acceptingConnectionId: String? = nil
     @State private var rejectingConnectionId: String? = nil
-    
+
     // Callback for sign out
     var onSignOut: () -> Void
-    
+
     var body: some View {
         NavigationView {
             VStack {
@@ -35,17 +35,17 @@ struct FriendsListView: View {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.largeTitle)
                             .foregroundColor(.orange)
-                        
+
                         Text("Oops!")
                             .font(.title2)
                             .fontWeight(.semibold)
-                        
+
                         Text(errorMessage)
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        
+
                         Button("Try Again") {
                             loadConnections()
                         }
@@ -60,17 +60,17 @@ struct FriendsListView: View {
                         Image(systemName: "person.2.slash")
                             .font(.largeTitle)
                             .foregroundColor(.secondary)
-                        
+
                         Text("No Friends Yet")
                             .font(.title2)
                             .fontWeight(.semibold)
-                        
+
                         Text("Start connecting with people to see them here!")
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        
+
                         Button("Refresh") {
                             loadConnections()
                         }
@@ -110,7 +110,7 @@ struct FriendsListView: View {
                             .foregroundColor(.blue)
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button("Refresh") {
@@ -136,16 +136,16 @@ struct FriendsListView: View {
             loadConnections()
         }
     }
-    
+
     private func loadConnections() {
         isLoading = true
         errorMessage = ""
-        
+
         // Using production API
         AuthService.shared.fetchConnections { result in
             DispatchQueue.main.async {
                 isLoading = false
-                
+
                 switch result {
                 case .success(let response):
                     connections = response.connections
@@ -155,15 +155,15 @@ struct FriendsListView: View {
             }
         }
     }
-    
+
     private func acceptConnection(connectionId: String) {
         acceptingConnectionId = connectionId
-        
+
         // Using production API
         AuthService.shared.acceptConnectionRequest(connectionId: connectionId) { result in
             DispatchQueue.main.async {
                 acceptingConnectionId = nil
-                
+
                 switch result {
                 case .success(_):
                     // Refresh connections to show updated status
@@ -175,15 +175,15 @@ struct FriendsListView: View {
             }
         }
     }
-    
+
     private func rejectConnection(connectionId: String) {
         rejectingConnectionId = connectionId
-        
+
         // Using production API
         AuthService.shared.rejectConnectionRequest(connectionId: connectionId) { result in
             DispatchQueue.main.async {
                 rejectingConnectionId = nil
-                
+
                 switch result {
                 case .success(_):
                     // Remove from local list and refresh connections
@@ -203,7 +203,7 @@ struct ConnectionRow: View {
     let isRejecting: Bool
     let onAcceptConnection: (String) -> Void
     let onRejectConnection: (String) -> Void
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Avatar placeholder
@@ -216,56 +216,36 @@ struct ConnectionRow: View {
                         .fontWeight(.semibold)
                         .foregroundColor(statusColor)
                 }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("@\(connection.username)")
                         .font(.headline)
                         .foregroundColor(.primary)
-                    
+
                     Spacer()
-                    
+
                     // Different UI based on connection status and type
                     if connection.connectionStatus?.lowercased() == "pending" {
                         if connection.isIncoming == true {
-                            // Incoming request - show simple accept/reject buttons
-                            HStack(spacing: 6) {
-                                Button {
-                                    onAcceptConnection(connection.id)
-                                } label: {
-                                    if isAccepting {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                            .tint(.white)
-                                    } else {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 14, weight: .semibold))
-                                    }
+                            // Send "yo" to incoming friend request
+                            Button {
+                                onAcceptConnection(connection.id)
+                            } label: {
+                                if isAccepting {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .tint(.white)
+                                } else {
+                                    Text("Send Yo")
+                                        .font(.system(size: 12, weight: .semibold))
                                 }
-                                .frame(width: 32, height: 32)
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(16)
-                                .disabled(isAccepting || isRejecting)
-                                
-                                Button {
-                                    onRejectConnection(connection.id)
-                                } label: {
-                                    if isRejecting {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                            .tint(.white)
-                                    } else {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 14, weight: .semibold))
-                                    }
-                                }
-                                .frame(width: 32, height: 32)
-                                .background(Color.red)
-                                .foregroundColor(.white)
-                                .cornerRadius(16)
-                                .disabled(isAccepting || isRejecting)
                             }
+                            .frame(width: 80, height: 32)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(16)
+                            .disabled(isAccepting || isRejecting)
                         } else {
                             // Outgoing request - show "Request Sent"
                             Text("REQUEST SENT")
@@ -283,7 +263,7 @@ struct ConnectionRow: View {
                             Circle()
                                 .fill(statusColor)
                                 .frame(width: 8, height: 8)
-                            
+
                             Text(statusText)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
@@ -294,7 +274,7 @@ struct ConnectionRow: View {
         }
         .padding(.vertical, 4)
     }
-    
+
     private var statusColor: Color {
         switch connection.status?.lowercased() {
         case "online":
@@ -307,7 +287,7 @@ struct ConnectionRow: View {
             return .gray
         }
     }
-    
+
     private var statusText: String {
         switch connection.status?.lowercased() {
         case "online":
@@ -336,7 +316,7 @@ struct ConnectionRow: View {
         initiated_by: "other_user",
         created_at: "2025-09-20T10:00:00Z"
     )
-    
+
     List {
         ConnectionRow(
             connection: Connection(from: apiConnection, currentUserId: "current_user"),

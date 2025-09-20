@@ -14,7 +14,7 @@ struct SignUpView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var showingSuccessAlert = false
-    
+
     // Navigation callback
     var onSignInTapped: (() -> Void)? = nil
 
