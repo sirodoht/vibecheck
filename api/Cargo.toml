@@ -13,3 +13,5 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 argon2 = { version = "0.5", features = ["std"] }
+utoipa = { version = "4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "6", features = ["axum"] }

@@ -8,6 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::{env, sync::Arc};
+use utoipa::{OpenApi, ToSchema};
 
 mod database;
 use database::Database;
@@ -38,6 +39,10 @@ struct AdminTemplate {
     pending_connections: Vec<AdminConnection>,
     accepted_connections: Vec<AdminConnection>,
 }
+
+#[derive(Template)]
+#[template(path = "swagger.html")]
+struct SwaggerTemplate;
 
 #[derive(Serialize)]
 pub struct UserWithFriends {
@@ -72,82 +77,113 @@ pub struct User {
     pub created_at: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RegisterRequest {
+    /// The username for the new account
     pub username: String,
+    /// The password for the new account (minimum 6 characters)
     pub password: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct RegisterResponse {
+    /// Whether the registration was successful
     pub success: bool,
+    /// Human-readable message about the registration result
     pub message: String,
+    /// The ID of the newly created user (if successful)
     pub user_id: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
+    /// The username to authenticate
     pub username: String,
+    /// The password to authenticate
     pub password: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct LoginResponse {
+    /// Whether the login was successful
     pub success: bool,
+    /// Human-readable message about the login result
     pub message: String,
+    /// User information (if login successful)
     pub user: Option<UserInfo>,
+    /// Authentication token for subsequent requests (if login successful)
     pub token: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct UserInfo {
+    /// Unique user ID
     pub id: String,
+    /// Username
     pub username: String,
+    /// Timestamp when the user was created
     pub created_at: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ErrorResponse {
+    /// Error message describing what went wrong
     pub error: String,
 }
 
-#[derive(sqlx::FromRow, Serialize)]
+#[derive(sqlx::FromRow, Serialize, ToSchema)]
 pub struct Connection {
+    /// Unique connection ID
     pub id: String,
+    /// ID of first user in the connection
     pub user1_id: String,
+    /// ID of second user in the connection
     pub user2_id: String,
-    pub other_username: String, // The username of the other user (not the requesting user)
+    /// Username of the other user (not the requesting user)
+    pub other_username: String,
+    /// Status of the connection (pending or accepted)
     pub status: String,
+    /// User ID who initiated the connection request
     pub initiated_by: String,
+    /// Timestamp when the connection was created
     pub created_at: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AddConnectionRequest {
+    /// Username of the user to send a connection request to
     pub username: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct AddConnectionResponse {
+    /// Whether the connection request was successful
     pub success: bool,
+    /// Human-readable message about the request result
     pub message: String,
+    /// ID of the newly created connection (if successful)
     pub connection_id: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ConnectionsResponse {
+    /// Whether the request was successful
     pub success: bool,
+    /// List of user connections
     pub connections: Vec<Connection>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AcceptConnectionRequest {
+    /// ID of the connection to accept
     pub connection_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct AcceptConnectionResponse {
+    /// Whether the acceptance was successful
     pub success: bool,
+    /// Human-readable message about the acceptance result
     pub message: String,
 }
 
@@ -200,7 +236,24 @@ async fn admin(State(db): State<AppState>) -> impl IntoResponse {
     Html(template.render().unwrap())
 }
 
+async fn swagger() -> impl IntoResponse {
+    let template = SwaggerTemplate;
+    Html(template.render().unwrap())
+}
+
 // API Handler functions
+#[utoipa::path(
+    post,
+    path = "/api/register",
+    request_body = RegisterRequest,
+    responses(
+        (status = 200, description = "User registered successfully", body = RegisterResponse),
+        (status = 400, description = "Bad request (invalid input)", body = ErrorResponse),
+        (status = 409, description = "Username already exists", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
 async fn register_user(
     State(db): State<AppState>,
     Json(request): Json<RegisterRequest>,
@@ -252,6 +305,18 @@ async fn register_user(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 400, description = "Bad request (invalid input)", body = ErrorResponse),
+        (status = 401, description = "Invalid username or password", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
 async fn login_user(
     State(db): State<AppState>,
     Json(request): Json<LoginRequest>,
@@ -338,6 +403,23 @@ fn extract_token_from_headers(headers: &HeaderMap) -> Result<String, String> {
 }
 
 // Authenticated endpoint to add a connection/friend
+#[utoipa::path(
+    post,
+    path = "/api/connections",
+    request_body = AddConnectionRequest,
+    responses(
+        (status = 200, description = "Connection request sent successfully", body = AddConnectionResponse),
+        (status = 400, description = "Bad request (invalid input)", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid authorization header", body = ErrorResponse),
+        (status = 404, description = "Target user not found", body = ErrorResponse),
+        (status = 409, description = "Connection already exists or cannot connect to self", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Connections",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn add_connection(
     State(db): State<AppState>,
     headers: HeaderMap,
@@ -408,6 +490,19 @@ async fn add_connection(
 }
 
 // Authenticated endpoint to get user's connections
+#[utoipa::path(
+    get,
+    path = "/api/connections",
+    responses(
+        (status = 200, description = "Successfully retrieved user connections", body = ConnectionsResponse),
+        (status = 401, description = "Missing or invalid authorization header", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Connections",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn get_connections(
     State(db): State<AppState>,
     headers: HeaderMap,
@@ -455,6 +550,23 @@ async fn get_connections(
 }
 
 // Authenticated endpoint to accept a pending connection
+#[utoipa::path(
+    post,
+    path = "/api/connections/accept",
+    request_body = AcceptConnectionRequest,
+    responses(
+        (status = 200, description = "Connection accepted successfully", body = AcceptConnectionResponse),
+        (status = 401, description = "Missing or invalid authorization header", body = ErrorResponse),
+        (status = 403, description = "Not authorized to accept this connection", body = ErrorResponse),
+        (status = 404, description = "Connection not found", body = ErrorResponse),
+        (status = 409, description = "Connection already accepted", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Connections",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn accept_connection(
     State(db): State<AppState>,
     headers: HeaderMap,
@@ -602,6 +714,63 @@ async fn admin_delete_user(
     axum::response::Redirect::to("/admin")
 }
 
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        register_user,
+        login_user,
+        add_connection,
+        get_connections,
+        accept_connection
+    ),
+    components(
+        schemas(
+            RegisterRequest,
+            RegisterResponse,
+            LoginRequest,
+            LoginResponse,
+            UserInfo,
+            ErrorResponse,
+            Connection,
+            AddConnectionRequest,
+            AddConnectionResponse,
+            ConnectionsResponse,
+            AcceptConnectionRequest,
+            AcceptConnectionResponse
+        )
+    ),
+    tags(
+        (name = "Authentication", description = "User registration and login endpoints"),
+        (name = "Connections", description = "Friend/connection management endpoints")
+    ),
+    info(
+        title = "Vibecheck API",
+        description = "A social connection API for managing user registrations, authentication, and friend connections",
+        version = "0.1.0"
+    ),
+    modifiers(&SecurityAddon)
+)]
+struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::HttpBuilder::new()
+                        .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                        .bearer_format("Bearer")
+                        .description(Some("Enter your session token"))
+                        .build(),
+                ),
+            )
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Parse command line arguments
@@ -702,6 +871,7 @@ async fn main() {
         .route("/", get(index))
         .route("/friends", get(friends))
         .route("/admin", get(admin))
+        .route("/swagger-ui", get(swagger))
         .route("/admin/create-user/{username}", get(admin_create_user))
         .route(
             "/admin/create-connection/{from}/{to}",
@@ -721,6 +891,10 @@ async fn main() {
         .route("/api/connections", post(add_connection))
         .route("/api/connections", get(get_connections))
         .route("/api/connections/accept", post(accept_connection))
+        .route(
+            "/api-docs/openapi.json",
+            get(|| async { Json(ApiDoc::openapi()) }),
+        )
         .with_state(app_state);
 
     // Start the server
