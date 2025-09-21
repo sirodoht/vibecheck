@@ -759,10 +759,9 @@ impl Database {
             .into_iter()
             .map(|row| YoMessage {
                 id: row.get("id"),
-                from_username: row.get("from_username"),
-                to_username: row.get("to_username"),
+                from: row.get("from_username"),
+                to: row.get("to_username"),
                 sent_at: row.get("sent_at"),
-                is_from_me: row.get::<String, _>("from_user_id") == user_id,
             })
             .collect();
 
@@ -772,10 +771,9 @@ impl Database {
 
 pub struct YoMessage {
     pub id: String,
-    pub from_username: String,
-    pub to_username: String,
+    pub from: String,
+    pub to: String,
     pub sent_at: String,
-    pub is_from_me: bool,
 }
 
 pub struct ConnectionInfo {

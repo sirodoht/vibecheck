@@ -169,19 +169,10 @@ pub struct SendYoRequest {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct SendYoResponse {
-    /// Whether the yo was sent successfully
-    pub success: bool,
-    /// Human-readable message about the result
-    pub message: String,
-    /// ID of the sent yo message (if successful)
-    pub yo_id: Option<String>,
-}
+pub struct SendYoResponse {}
 
 #[derive(Serialize, ToSchema)]
 pub struct YoMessagesResponse {
-    /// Whether the request was successful
-    pub success: bool,
     /// List of yo messages
     pub messages: Vec<YoMessageInfo>,
 }
@@ -191,13 +182,11 @@ pub struct YoMessageInfo {
     /// Unique message ID
     pub id: String,
     /// Username who sent the yo
-    pub from_username: String,
+    pub from: String,
     /// Username who received the yo
-    pub to_username: String,
+    pub to: String,
     /// Timestamp when the yo was sent
     pub sent_at: String,
-    /// Whether this yo was sent by the requesting user
-    pub is_from_me: bool,
 }
 
 // Admin-related structures (not needed anymore with path parameters)
@@ -710,11 +699,7 @@ pub async fn send_yo(
 
     // Send the yo message
     match db.create_yo_message(&user.id, &request.username).await {
-        Ok(yo_id) => Ok(Json(SendYoResponse {
-            success: true,
-            message: format!("Yo sent to {}!", request.username),
-            yo_id: Some(yo_id),
-        })),
+        Ok(_) => Ok(Json(SendYoResponse {})),
         Err(e) => {
             let error_msg = e.to_string();
             let status_code = if error_msg.contains("User not found") {
@@ -783,15 +768,13 @@ pub async fn get_yo_messages(
                 .into_iter()
                 .map(|msg| YoMessageInfo {
                     id: msg.id,
-                    from_username: msg.from_username,
-                    to_username: msg.to_username,
+                    from: msg.from,
+                    to: msg.to,
                     sent_at: msg.sent_at,
-                    is_from_me: msg.is_from_me,
                 })
                 .collect();
 
             Ok(Json(YoMessagesResponse {
-                success: true,
                 messages: message_infos,
             }))
         }
@@ -1130,7 +1113,7 @@ pub fn create_app(db: AppState) -> Router {
         .route("/admin/delete-user/{user_id}", get(admin_delete_user))
         .route("/api/register", post(register_user))
         .route("/api/login", post(login_user))
-        .route("/api/connections", post(request_connection))
+        .route("/api/connections/request", post(request_connection))
         .route("/api/connections", get(get_connections))
         .route("/api/connections/accept", post(accept_connection))
         .route("/api/yo", post(send_yo))
