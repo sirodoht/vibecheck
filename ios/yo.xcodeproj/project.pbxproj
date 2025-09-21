@@ -12,37 +12,37 @@
 			containerPortal = 25F1EAAF2E7EBC7B00C86F15 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 25F1EAB62E7EBC7B00C86F15;
-			remoteInfo = vibecheck;
+			remoteInfo = yo;
 		};
 		25F1EACF2E7EBC7C00C86F15 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 25F1EAAF2E7EBC7B00C86F15 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 25F1EAB62E7EBC7B00C86F15;
-			remoteInfo = vibecheck;
+			remoteInfo = yo;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		25F1EAB72E7EBC7B00C86F15 /* vibecheck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = vibecheck.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		25F1EAC42E7EBC7C00C86F15 /* vibecheckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = vibecheckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		25F1EACE2E7EBC7C00C86F15 /* vibecheckUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = vibecheckUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		25F1EAB72E7EBC7B00C86F15 /* yo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = yo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		25F1EAC42E7EBC7C00C86F15 /* yoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = yoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		25F1EACE2E7EBC7C00C86F15 /* yoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = yoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		25F1EAB92E7EBC7B00C86F15 /* vibecheck */ = {
+		25F1EAB92E7EBC7B00C86F15 /* yo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = vibecheck;
+			path = yo;
 			sourceTree = "<group>";
 		};
-		25F1EAC72E7EBC7C00C86F15 /* vibecheckTests */ = {
+		25F1EAC72E7EBC7C00C86F15 /* yoTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = vibecheckTests;
+			path = yoTests;
 			sourceTree = "<group>";
 		};
-		25F1EAD12E7EBC7C00C86F15 /* vibecheckUITests */ = {
+		25F1EAD12E7EBC7C00C86F15 /* yoUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = vibecheckUITests;
+			path = yoUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +75,9 @@
 		25F1EAAE2E7EBC7B00C86F15 = {
 			isa = PBXGroup;
 			children = (
-				25F1EAB92E7EBC7B00C86F15 /* vibecheck */,
-				25F1EAC72E7EBC7C00C86F15 /* vibecheckTests */,
-				25F1EAD12E7EBC7C00C86F15 /* vibecheckUITests */,
+				25F1EAB92E7EBC7B00C86F15 /* yo */,
+				25F1EAC72E7EBC7C00C86F15 /* yoTests */,
+				25F1EAD12E7EBC7C00C86F15 /* yoUITests */,
 				25F1EAB82E7EBC7B00C86F15 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -85,9 +85,9 @@
 		25F1EAB82E7EBC7B00C86F15 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				25F1EAB72E7EBC7B00C86F15 /* vibecheck.app */,
-				25F1EAC42E7EBC7C00C86F15 /* vibecheckTests.xctest */,
-				25F1EACE2E7EBC7C00C86F15 /* vibecheckUITests.xctest */,
+				25F1EAB72E7EBC7B00C86F15 /* yo.app */,
+				25F1EAC42E7EBC7C00C86F15 /* yoTests.xctest */,
+				25F1EACE2E7EBC7C00C86F15 /* yoUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,9 +95,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		25F1EAB62E7EBC7B00C86F15 /* vibecheck */ = {
+		25F1EAB62E7EBC7B00C86F15 /* yo */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 25F1EAD82E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "vibecheck" */;
+			buildConfigurationList = 25F1EAD82E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "yo" */;
 			buildPhases = (
 				25F1EAB32E7EBC7B00C86F15 /* Sources */,
 				25F1EAB42E7EBC7B00C86F15 /* Frameworks */,
@@ -108,18 +108,18 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				25F1EAB92E7EBC7B00C86F15 /* vibecheck */,
+				25F1EAB92E7EBC7B00C86F15 /* yo */,
 			);
-			name = vibecheck;
+			name = yo;
 			packageProductDependencies = (
 			);
-			productName = vibecheck;
-			productReference = 25F1EAB72E7EBC7B00C86F15 /* vibecheck.app */;
+			productName = yo;
+			productReference = 25F1EAB72E7EBC7B00C86F15 /* yo.app */;
 			productType = "com.apple.product-type.application";
 		};
-		25F1EAC32E7EBC7C00C86F15 /* vibecheckTests */ = {
+		25F1EAC32E7EBC7C00C86F15 /* yoTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 25F1EADB2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "vibecheckTests" */;
+			buildConfigurationList = 25F1EADB2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "yoTests" */;
 			buildPhases = (
 				25F1EAC02E7EBC7C00C86F15 /* Sources */,
 				25F1EAC12E7EBC7C00C86F15 /* Frameworks */,
@@ -131,18 +131,18 @@
 				25F1EAC62E7EBC7C00C86F15 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				25F1EAC72E7EBC7C00C86F15 /* vibecheckTests */,
+				25F1EAC72E7EBC7C00C86F15 /* yoTests */,
 			);
-			name = vibecheckTests;
+			name = yoTests;
 			packageProductDependencies = (
 			);
-			productName = vibecheckTests;
-			productReference = 25F1EAC42E7EBC7C00C86F15 /* vibecheckTests.xctest */;
+			productName = yoTests;
+			productReference = 25F1EAC42E7EBC7C00C86F15 /* yoTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		25F1EACD2E7EBC7C00C86F15 /* vibecheckUITests */ = {
+		25F1EACD2E7EBC7C00C86F15 /* yoUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 25F1EADE2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "vibecheckUITests" */;
+			buildConfigurationList = 25F1EADE2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "yoUITests" */;
 			buildPhases = (
 				25F1EACA2E7EBC7C00C86F15 /* Sources */,
 				25F1EACB2E7EBC7C00C86F15 /* Frameworks */,
@@ -154,13 +154,13 @@
 				25F1EAD02E7EBC7C00C86F15 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				25F1EAD12E7EBC7C00C86F15 /* vibecheckUITests */,
+				25F1EAD12E7EBC7C00C86F15 /* yoUITests */,
 			);
-			name = vibecheckUITests;
+			name = yoUITests;
 			packageProductDependencies = (
 			);
-			productName = vibecheckUITests;
-			productReference = 25F1EACE2E7EBC7C00C86F15 /* vibecheckUITests.xctest */;
+			productName = yoUITests;
+			productReference = 25F1EACE2E7EBC7C00C86F15 /* yoUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -186,7 +186,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 25F1EAB22E7EBC7B00C86F15 /* Build configuration list for PBXProject "vibecheck" */;
+			buildConfigurationList = 25F1EAB22E7EBC7B00C86F15 /* Build configuration list for PBXProject "yo" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -200,9 +200,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				25F1EAB62E7EBC7B00C86F15 /* vibecheck */,
-				25F1EAC32E7EBC7C00C86F15 /* vibecheckTests */,
-				25F1EACD2E7EBC7C00C86F15 /* vibecheckUITests */,
+				25F1EAB62E7EBC7B00C86F15 /* yo */,
+				25F1EAC32E7EBC7C00C86F15 /* yoTests */,
+				25F1EACD2E7EBC7C00C86F15 /* yoUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -258,12 +258,12 @@
 /* Begin PBXTargetDependency section */
 		25F1EAC62E7EBC7C00C86F15 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 25F1EAB62E7EBC7B00C86F15 /* vibecheck */;
+			target = 25F1EAB62E7EBC7B00C86F15 /* yo */;
 			targetProxy = 25F1EAC52E7EBC7C00C86F15 /* PBXContainerItemProxy */;
 		};
 		25F1EAD02E7EBC7C00C86F15 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 25F1EAB62E7EBC7B00C86F15 /* vibecheck */;
+			target = 25F1EAB62E7EBC7B00C86F15 /* yo */;
 			targetProxy = 25F1EACF2E7EBC7C00C86F15 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -410,7 +410,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.vibecheck;
+				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.yo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -438,7 +438,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.vibecheck;
+				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.yo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -456,12 +456,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.vibecheckTests;
+				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.yoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/vibecheck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/vibecheck";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/yo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/yo";
 			};
 			name = Debug;
 		};
@@ -475,12 +475,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.vibecheckTests;
+				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.yoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/vibecheck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/vibecheck";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/yo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/yo";
 			};
 			name = Release;
 		};
@@ -492,12 +492,12 @@
 				DEVELOPMENT_TEAM = BJ74X55K65;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.vibecheckUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.yoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = vibecheck;
+				TEST_TARGET_NAME = yo;
 			};
 			name = Debug;
 		};
@@ -509,19 +509,19 @@
 				DEVELOPMENT_TEAM = BJ74X55K65;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.vibecheckUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = zfraenkel.yoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = vibecheck;
+				TEST_TARGET_NAME = yo;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		25F1EAB22E7EBC7B00C86F15 /* Build configuration list for PBXProject "vibecheck" */ = {
+		25F1EAB22E7EBC7B00C86F15 /* Build configuration list for PBXProject "yo" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				25F1EAD62E7EBC7C00C86F15 /* Debug */,
@@ -530,7 +530,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		25F1EAD82E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "vibecheck" */ = {
+		25F1EAD82E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "yo" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				25F1EAD92E7EBC7C00C86F15 /* Debug */,
@@ -539,7 +539,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		25F1EADB2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "vibecheckTests" */ = {
+		25F1EADB2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "yoTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				25F1EADC2E7EBC7C00C86F15 /* Debug */,
@@ -548,7 +548,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		25F1EADE2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "vibecheckUITests" */ = {
+		25F1EADE2E7EBC7C00C86F15 /* Build configuration list for PBXNativeTarget "yoUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				25F1EADF2E7EBC7C00C86F15 /* Debug */,

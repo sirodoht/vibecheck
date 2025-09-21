@@ -1,6 +1,6 @@
 //
 //  AuthService.swift
-//  vibecheck
+//  yo
 //
 //  Created by Theodore Keloglou on 20/09/2025.
 //
@@ -135,10 +135,10 @@ class AuthService {
     static let shared = AuthService()
 
     // Logger for debugging
-    private let logger = Logger(subsystem: "com.vibecheck.app", category: "AuthService")
+    private let logger = Logger(subsystem: "com.yo.app", category: "AuthService")
 
     // Update this URL to your actual API endpoint
-    private let baseURL = "https://vibecheckapi.01z.io/api"
+    private let baseURL = "https://yoapi.01z.io/api"
 
     // Store authentication token and user ID
     private var authToken: String?

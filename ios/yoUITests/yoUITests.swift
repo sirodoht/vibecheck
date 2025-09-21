@@ -1,13 +1,13 @@
 //
-//  vibecheckUITests.swift
-//  vibecheckUITests
+//  yoUITests.swift
+//  yoUITests
 //
 //  Created by Theodore Keloglou on 20/09/2025.
 //
 
 import XCTest
 
-final class vibecheckUITests: XCTestCase {
+final class yoUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.

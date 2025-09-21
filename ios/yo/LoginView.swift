@@ -1,6 +1,6 @@
 //
 //  LoginView.swift
-//  vibecheck
+//  yo
 //
 //  Created by Theodore Keloglou on 20/09/2025.
 //
@@ -22,30 +22,26 @@ struct LoginView: View {
 
             // App title or logo area
             VStack(spacing: 8) {
-                Image(systemName: "person.circle")
+                Image(systemName: "star.fill")
                     .resizable()
                     .frame(width: 80, height: 80)
                     .foregroundColor(.blue)
 
-                Text("Vibecheck")
+                Text("yo")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-
-                Text("Sign in to your account")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
             }
 
             Spacer()
 
             // Form fields
             VStack(spacing: 16) {
-                TextField("Username", text: $username)
+                TextField("username", text: $username)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
 
-                SecureField("Password", text: $password)
+                SecureField("password", text: $password)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
             .padding(.horizontal)
@@ -66,7 +62,7 @@ struct LoginView: View {
                             .scaleEffect(0.8)
                             .foregroundColor(.white)
                     }
-                    Text(isLoading ? "Signing In..." : "Sign In")
+                    Text(isLoading ? "signing in..." : "sign in")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -78,7 +74,7 @@ struct LoginView: View {
             .padding(.horizontal)
 
             // Forgot password (placeholder)
-            Button("Forgot Password?") {
+            Button("forgot password?") {
                 // Handle forgot password
             }
             .font(.footnote)
@@ -88,9 +84,9 @@ struct LoginView: View {
 
             // Sign up link
             HStack {
-                Text("Don't have an account?")
+                Text("don't have an account?")
                     .foregroundColor(.secondary)
-                Button("Sign Up") {
+                Button("sign up") {
                     onSignUpTapped()
                 }
             }

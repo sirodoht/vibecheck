@@ -1,13 +1,13 @@
 //
-//  vibecheckUITestsLaunchTests.swift
-//  vibecheckUITests
+//  yoUITestsLaunchTests.swift
+//  yoUITests
 //
 //  Created by Theodore Keloglou on 20/09/2025.
 //
 
 import XCTest
 
-final class vibecheckUITestsLaunchTests: XCTestCase {
+final class yoUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
