@@ -846,7 +846,7 @@ async fn admin_delete_user(
         (name = "Connections", description = "Friend/connection management endpoints")
     ),
     info(
-        title = "Vibecheck API",
+        title = "yo API",
         description = "A social connection API for managing user registrations, authentication, and friend connections",
         version = "0.1.0"
     ),
@@ -880,11 +880,11 @@ async fn main() {
 
     // Default values
     let mut port = 3000;
-    let mut database_path = "./vibecheckapi.db".to_string();
+    let mut database_path = "./yoapi.db".to_string();
     let mut serve = false;
 
     if args.len() == 1 {
-        println!("vibecheckapi - User Registration API");
+        println!("yoapi - User Registration API");
         println!();
         println!("Usage:");
         println!("  {} --serve [OPTIONS]", args[0]);
@@ -892,11 +892,11 @@ async fn main() {
         println!("Options:");
         println!("  --serve                    Start the user registration API server");
         println!("  --port <PORT>             Port to bind to (default: 3000)");
-        println!("  --database <PATH>         Database file path (default: ./vibecheckapi.db)");
+        println!("  --database <PATH>         Database file path (default: ./yoapi.db)");
         println!();
         println!("Example:");
         println!(
-            "  {} --serve --port 4000 --database /var/www/vibecheck/api/vibecheckapi.db",
+            "  {} --serve --port 4000 --database /var/www/yo/api/yoapi.db",
             args[0]
         );
         println!();
@@ -977,7 +977,7 @@ async fn main() {
         .await
         .expect("Failed to bind to address");
 
-    println!("Vibecheck API running on http://{}", bind_address);
+    println!("yo API running on http://{}", bind_address);
 
     axum::serve(listener, app)
         .await

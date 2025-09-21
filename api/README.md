@@ -1,4 +1,4 @@
-# Vibecheck API
+# yo API
 
 ## Setup
 

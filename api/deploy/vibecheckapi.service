@@ -1,5 +1,5 @@
 [Unit]
-Description=Vibecheck API Server
+Description=yo API Server
 After=network.target
 Wants=network.target
 
@@ -7,8 +7,8 @@ Wants=network.target
 Type=simple
 User=deploy
 Group=www-data
-WorkingDirectory=/var/www/vibecheck/api
-ExecStart=/var/www/vibecheck/api/target/release/vibecheckapi --serve --port 4000 --database /var/www/vibecheck/api/vibecheckapi.db
+WorkingDirectory=/var/www/yo/api
+ExecStart=/var/www/yo/api/target/release/yoapi --serve --port 4000 --database /var/www/yo/api/yoapi.db
 Restart=always
 RestartSec=5
 

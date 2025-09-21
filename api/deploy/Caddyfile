@@ -1,3 +1,3 @@
-vibecheckapi.01z.io {
+yoapi.01z.io {
 	reverse_proxy localhost:4000
 }

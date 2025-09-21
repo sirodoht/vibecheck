@@ -20,9 +20,9 @@ fi
 if cargo build --release; then
     echo "Post-merge hook: Build completed successfully!"
 
-    # Restart the vibecheckapi service
-    echo "Post-merge hook: Restarting vibecheckapi service..."
-    if sudo systemctl restart vibecheckapi; then
+    # Restart the yoapi service
+    echo "Post-merge hook: Restarting yoapi service..."
+    if sudo systemctl restart yoapi; then
         echo "Post-merge hook: Service restarted successfully!"
     else
         echo "Post-merge hook: Failed to restart service!"

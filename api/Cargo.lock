@@ -2648,27 +2648,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "vibecheckapi"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "askama",
- "axum 0.8.4",
- "chrono",
- "http-body-util",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "tokio",
- "tower 0.4.13",
- "utoipa",
- "utoipa-swagger-ui",
- "uuid",
-]
-
-[[package]]
 name = "walkdir"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3107,6 +3086,27 @@ name = "writeable"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea2f10b9bb0928dfb1b42b65e1f9e36f7f54dbdf08457afefb38afcdec4fa2bb"
+
+[[package]]
+name = "yoapi"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "askama",
+ "axum 0.8.4",
+ "chrono",
+ "http-body-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tower 0.4.13",
+ "utoipa",
+ "utoipa-swagger-ui",
+ "uuid",
+]
 
 [[package]]
 name = "yoke"
