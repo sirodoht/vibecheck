@@ -1,5 +1,5 @@
 [Unit]
-Description=yo API Server
+Description=Yo API Server
 After=network.target
 Wants=network.target
 
@@ -8,7 +8,7 @@ Type=simple
 User=deploy
 Group=www-data
 WorkingDirectory=/var/www/yo/api
-ExecStart=/var/www/yo/api/target/release/yoapi --serve --port 4000 --database /var/www/yo/api/yoapi.db
+ExecStart=/var/www/yo/api/target/release/yoapi --serve --port 4001 --database /var/www/yo/api/yoapi.db
 Restart=always
 RestartSec=5
 
