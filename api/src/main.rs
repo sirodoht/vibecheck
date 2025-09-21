@@ -94,14 +94,7 @@ pub struct RegisterRequest {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct RegisterResponse {
-    /// Whether the registration was successful
-    pub success: bool,
-    /// Human-readable message about the registration result
-    pub message: String,
-    /// The ID of the newly created user (if successful)
-    pub user_id: Option<String>,
-}
+pub struct RegisterResponse {}
 
 #[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
@@ -113,13 +106,7 @@ pub struct LoginRequest {
 
 #[derive(Serialize, ToSchema)]
 pub struct LoginResponse {
-    /// Whether the login was successful
-    pub success: bool,
-    /// Human-readable message about the login result
-    pub message: String,
-    /// User information (if login successful)
-    pub user: Option<UserInfo>,
-    /// Authentication token for subsequent requests (if login successful)
+    /// Authentication token
     pub token: Option<String>,
 }
 
@@ -141,18 +128,12 @@ pub struct ErrorResponse {
 
 #[derive(sqlx::FromRow, Serialize, ToSchema)]
 pub struct Connection {
-    /// Unique connection ID
-    pub id: String,
-    /// ID of first user in the connection
-    pub user1_id: String,
-    /// ID of second user in the connection
-    pub user2_id: String,
-    /// Username of the other user (not the requesting user)
-    pub other_username: String,
+    /// Username of the user who initiated the connection request
+    pub initiator: String,
+    /// Username of the user who did not initiate the connection
+    pub other: String,
     /// Status of the connection (pending or accepted)
     pub status: String,
-    /// User ID who initiated the connection request
-    pub initiated_by: String,
     /// Timestamp when the connection was created
     pub created_at: String,
 }
@@ -164,71 +145,62 @@ pub struct AddConnectionRequest {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct AddConnectionResponse {
-    /// Whether the connection request was successful
-    pub success: bool,
-    /// Human-readable message about the request result
-    pub message: String,
-    /// ID of the newly created connection (if successful)
-    pub connection_id: Option<String>,
-}
+pub struct AddConnectionResponse {}
 
 #[derive(Serialize, ToSchema)]
 pub struct ConnectionsResponse {
-    /// Whether the request was successful
-    pub success: bool,
     /// List of user connections
     pub connections: Vec<Connection>,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct AcceptConnectionRequest {
-    /// ID of the connection to accept
-    pub connection_id: String,
+    /// Username of the user whose connection request to accept
+    pub username: String,
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct AcceptConnectionResponse {
-    /// Whether the acceptance was successful
+pub struct AcceptConnectionResponse {}
+
+#[derive(Deserialize, ToSchema)]
+pub struct SendYoRequest {
+    /// Username of the friend to send yo to
+    pub username: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SendYoResponse {
+    /// Whether the yo was sent successfully
     pub success: bool,
-    /// Human-readable message about the acceptance result
+    /// Human-readable message about the result
     pub message: String,
+    /// ID of the sent yo message (if successful)
+    pub yo_id: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct YoMessagesResponse {
+    /// Whether the request was successful
+    pub success: bool,
+    /// List of yo messages
+    pub messages: Vec<YoMessageInfo>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct YoMessageInfo {
+    /// Unique message ID
+    pub id: String,
+    /// Username who sent the yo
+    pub from_username: String,
+    /// Username who received the yo
+    pub to_username: String,
+    /// Timestamp when the yo was sent
+    pub sent_at: String,
+    /// Whether this yo was sent by the requesting user
+    pub is_from_me: bool,
 }
 
 // Admin-related structures (not needed anymore with path parameters)
-
-// App creation function
-pub fn create_app(db: AppState) -> Router {
-    Router::new()
-        .route("/", get(index))
-        .route("/friends", get(friends))
-        .route("/admin", get(admin))
-        .route("/swagger-ui", get(swagger))
-        .route("/admin/create-user/{username}", get(admin_create_user))
-        .route(
-            "/admin/create-connection/{from}/{to}",
-            get(admin_create_connection),
-        )
-        .route(
-            "/admin/accept-connection/{id}",
-            get(admin_accept_connection),
-        )
-        .route(
-            "/admin/reject-connection/{id}",
-            get(admin_reject_connection),
-        )
-        .route("/admin/delete-user/{user_id}", get(admin_delete_user))
-        .route("/api/register", post(register_user))
-        .route("/api/login", post(login_user))
-        .route("/api/connections", post(add_connection))
-        .route("/api/connections", get(get_connections))
-        .route("/api/connections/accept", post(accept_connection))
-        .route(
-            "/api-docs/openapi.json",
-            get(|| async { Json(ApiDoc::openapi()) }),
-        )
-        .with_state(db)
-}
 
 // Web Handler functions
 pub async fn index(State(db): State<AppState>) -> impl IntoResponse {
@@ -343,11 +315,7 @@ pub async fn register_user(
 
     // Attempt to create user
     match db.create_user(&request.username, &request.password).await {
-        Ok(user_id) => Ok(Json(RegisterResponse {
-            success: true,
-            message: "User registered successfully".to_string(),
-            user_id: Some(user_id),
-        })),
+        Ok(_) => Ok(Json(RegisterResponse {})),
         Err(e) => {
             if e.to_string().contains("already exists") {
                 Err((
@@ -439,16 +407,7 @@ pub async fn login_user(
         }
     };
 
-    Ok(Json(LoginResponse {
-        success: true,
-        message: "Login successful".to_string(),
-        user: Some(UserInfo {
-            id: user.id,
-            username: user.username,
-            created_at: user.created_at,
-        }),
-        token: Some(token),
-    }))
+    Ok(Json(LoginResponse { token: Some(token) }))
 }
 
 // Helper function to extract token from Authorization header
@@ -484,7 +443,7 @@ pub fn extract_token_from_headers(headers: &HeaderMap) -> Result<String, String>
         ("bearer_auth" = [])
     )
 )]
-pub async fn add_connection(
+pub async fn request_connection(
     State(db): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<AddConnectionRequest>,
@@ -528,14 +487,7 @@ pub async fn add_connection(
 
     // Create the connection
     match db.create_connection(&user.id, &request.username).await {
-        Ok(connection_id) => Ok(Json(AddConnectionResponse {
-            success: true,
-            message: format!(
-                "Connection request sent to {}. Waiting for acceptance.",
-                request.username
-            ),
-            connection_id: Some(connection_id),
-        })),
+        Ok(_) => Ok(Json(AddConnectionResponse {})),
         Err(e) => {
             let error_msg = e.to_string();
             let status_code = if error_msg.contains("User not found") {
@@ -600,10 +552,7 @@ pub async fn get_connections(
 
     // Get user's connections
     match db.get_user_connections(&user.id).await {
-        Ok(connections) => Ok(Json(ConnectionsResponse {
-            success: true,
-            connections,
-        })),
+        Ok(connections) => Ok(Json(ConnectionsResponse { connections })),
         Err(_) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -622,7 +571,7 @@ pub async fn get_connections(
         (status = 200, description = "Connection accepted successfully", body = AcceptConnectionResponse),
         (status = 401, description = "Missing or invalid authorization header", body = ErrorResponse),
         (status = 403, description = "Not authorized to accept this connection", body = ErrorResponse),
-        (status = 404, description = "Connection not found", body = ErrorResponse),
+        (status = 404, description = "User not found or no pending connection from that user", body = ErrorResponse),
         (status = 409, description = "Connection already accepted", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -663,21 +612,32 @@ pub async fn accept_connection(
         }
     };
 
+    // Validate input
+    if request.username.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Username cannot be empty".to_string(),
+            }),
+        ));
+    }
+
     // Accept the connection
-    match db.accept_connection(&request.connection_id, &user.id).await {
-        Ok(()) => Ok(Json(AcceptConnectionResponse {
-            success: true,
-            message: "Connection accepted successfully".to_string(),
-        })),
+    match db
+        .accept_connection_by_username(&user.id, &request.username)
+        .await
+    {
+        Ok(()) => Ok(Json(AcceptConnectionResponse {})),
         Err(e) => {
             let error_msg = e.to_string();
-            let status_code = if error_msg.contains("Connection not found") {
+            let status_code = if error_msg.contains("User not found")
+                || error_msg.contains("Connection not found")
+                || error_msg.contains("not authorized")
+            {
                 StatusCode::NOT_FOUND
             } else if error_msg.contains("already accepted") {
                 StatusCode::CONFLICT
-            } else if error_msg.contains("not authorized")
-                || error_msg.contains("cannot accept your own")
-            {
+            } else if error_msg.contains("cannot accept your own") {
                 StatusCode::FORBIDDEN
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -685,6 +645,162 @@ pub async fn accept_connection(
 
             Err((status_code, Json(ErrorResponse { error: error_msg })))
         }
+    }
+}
+
+// Yo Handler functions
+#[utoipa::path(
+    post,
+    path = "/api/yo",
+    request_body = SendYoRequest,
+    responses(
+        (status = 200, description = "Yo sent successfully", body = SendYoResponse),
+        (status = 400, description = "Bad request (invalid input)", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid authorization header", body = ErrorResponse),
+        (status = 404, description = "User not found", body = ErrorResponse),
+        (status = 409, description = "Cannot send yo to yourself or not friends", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Yo Messages",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn send_yo(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SendYoRequest>,
+) -> Result<Json<SendYoResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Extract and validate session token
+    let token = match extract_token_from_headers(&headers) {
+        Ok(token) => token,
+        Err(e) => return Err((StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))),
+    };
+
+    // Validate session and get user
+    let user = match db.validate_session(&token).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Invalid session token".to_string(),
+                }),
+            ));
+        }
+        Err(_) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Session validation failed".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Validate input
+    if request.username.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Username cannot be empty".to_string(),
+            }),
+        ));
+    }
+
+    // Send the yo message
+    match db.create_yo_message(&user.id, &request.username).await {
+        Ok(yo_id) => Ok(Json(SendYoResponse {
+            success: true,
+            message: format!("Yo sent to {}!", request.username),
+            yo_id: Some(yo_id),
+        })),
+        Err(e) => {
+            let error_msg = e.to_string();
+            let status_code = if error_msg.contains("User not found") {
+                StatusCode::NOT_FOUND
+            } else if error_msg.contains("Cannot send yo to yourself")
+                || error_msg.contains("only send yo messages to your friends")
+            {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+
+            Err((status_code, Json(ErrorResponse { error: error_msg })))
+        }
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/yo",
+    responses(
+        (status = 200, description = "Successfully retrieved yo messages", body = YoMessagesResponse),
+        (status = 401, description = "Missing or invalid authorization header", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Yo Messages",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_yo_messages(
+    State(db): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<YoMessagesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Extract and validate session token
+    let token = match extract_token_from_headers(&headers) {
+        Ok(token) => token,
+        Err(e) => return Err((StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))),
+    };
+
+    // Validate session and get user
+    let user = match db.validate_session(&token).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Invalid session token".to_string(),
+                }),
+            ));
+        }
+        Err(_) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Session validation failed".to_string(),
+                }),
+            ));
+        }
+    };
+
+    // Get yo messages
+    match db.get_yo_messages(&user.id).await {
+        Ok(messages) => {
+            let message_infos: Vec<YoMessageInfo> = messages
+                .into_iter()
+                .map(|msg| YoMessageInfo {
+                    id: msg.id,
+                    from_username: msg.from_username,
+                    to_username: msg.to_username,
+                    sent_at: msg.sent_at,
+                    is_from_me: msg.is_from_me,
+                })
+                .collect();
+
+            Ok(Json(YoMessagesResponse {
+                success: true,
+                messages: message_infos,
+            }))
+        }
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to retrieve yo messages".to_string(),
+            }),
+        )),
     }
 }
 
@@ -821,9 +937,11 @@ async fn admin_delete_user(
     paths(
         register_user,
         login_user,
-        add_connection,
+        request_connection,
         get_connections,
-        accept_connection
+        accept_connection,
+        send_yo,
+        get_yo_messages
     ),
     components(
         schemas(
@@ -838,12 +956,17 @@ async fn admin_delete_user(
             AddConnectionResponse,
             ConnectionsResponse,
             AcceptConnectionRequest,
-            AcceptConnectionResponse
+            AcceptConnectionResponse,
+            SendYoRequest,
+            SendYoResponse,
+            YoMessagesResponse,
+            YoMessageInfo
         )
     ),
     tags(
         (name = "Authentication", description = "User registration and login endpoints"),
-        (name = "Connections", description = "Friend/connection management endpoints")
+        (name = "Connections", description = "Friend/connection management endpoints"),
+        (name = "Yo Messages", description = "Yo message sending and retrieval endpoints")
     ),
     info(
         title = "yo API",
@@ -982,4 +1105,39 @@ async fn main() {
     axum::serve(listener, app)
         .await
         .expect("Failed to start server");
+}
+
+// App creation function
+pub fn create_app(db: AppState) -> Router {
+    Router::new()
+        .route("/", get(index))
+        .route("/friends", get(friends))
+        .route("/admin", get(admin))
+        .route("/swagger-ui", get(swagger))
+        .route("/admin/create-user/{username}", get(admin_create_user))
+        .route(
+            "/admin/create-connection/{from}/{to}",
+            get(admin_create_connection),
+        )
+        .route(
+            "/admin/accept-connection/{id}",
+            get(admin_accept_connection),
+        )
+        .route(
+            "/admin/reject-connection/{id}",
+            get(admin_reject_connection),
+        )
+        .route("/admin/delete-user/{user_id}", get(admin_delete_user))
+        .route("/api/register", post(register_user))
+        .route("/api/login", post(login_user))
+        .route("/api/connections", post(request_connection))
+        .route("/api/connections", get(get_connections))
+        .route("/api/connections/accept", post(accept_connection))
+        .route("/api/yo", post(send_yo))
+        .route("/api/yo", get(get_yo_messages))
+        .route(
+            "/api-docs/openapi.json",
+            get(|| async { Json(ApiDoc::openapi()) }),
+        )
+        .with_state(db)
 }

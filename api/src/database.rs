@@ -343,22 +343,23 @@ impl Database {
         &self,
         user_id: &str,
     ) -> Result<Vec<crate::Connection>, Box<dyn std::error::Error>> {
-        // Get connections where others have requested friendship with this user
-        // (incoming requests only, not outgoing requests)
+        // Get all connections for this user (both incoming and outgoing requests)
         let rows = sqlx::query(
-            "SELECT c.id, c.user1_id, c.user2_id, c.status, c.initiated_by, c.created_at,
-                    CASE 
-                        WHEN c.user1_id = ? THEN u2.username 
-                        ELSE u1.username 
-                    END as other_username
+            "SELECT c.id, c.status, c.created_at,
+                    u1.username as user1,
+                    u2.username as user2,
+                    initiator.username as initiator,
+                    CASE
+                        WHEN c.initiated_by = c.user1_id THEN u2.username
+                        ELSE u1.username
+                    END as other
              FROM connections c
              JOIN users u1 ON c.user1_id = u1.id
              JOIN users u2 ON c.user2_id = u2.id
-             WHERE (c.user1_id = ? OR c.user2_id = ?) AND c.initiated_by != ?
+             JOIN users initiator ON c.initiated_by = initiator.id
+             WHERE (c.user1_id = ? OR c.user2_id = ?)
              ORDER BY c.created_at DESC",
         )
-        .bind(user_id)
-        .bind(user_id)
         .bind(user_id)
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -367,12 +368,9 @@ impl Database {
         let connections = rows
             .into_iter()
             .map(|row| crate::Connection {
-                id: row.get("id"),
-                user1_id: row.get("user1_id"),
-                user2_id: row.get("user2_id"),
-                other_username: row.get("other_username"),
+                initiator: row.get("initiator"),
+                other: row.get("other"),
                 status: row.get("status"),
-                initiated_by: row.get("initiated_by"),
                 created_at: row.get("created_at"),
             })
             .collect();
@@ -484,6 +482,70 @@ impl Database {
         sqlx::query("UPDATE connections SET status = 'accepted', updated_at = ? WHERE id = ?")
             .bind(&now)
             .bind(connection_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn accept_connection_by_username(
+        &self,
+        user_id: &str,
+        initiator_username: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Find the initiator user by username
+        let initiator_user_row = sqlx::query("SELECT id FROM users WHERE username = ?")
+            .bind(initiator_username)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        let initiator_user_id = match initiator_user_row {
+            Some(row) => row.get::<String, _>("id"),
+            None => return Err("User not found".into()),
+        };
+
+        // Check if user is trying to accept their own request
+        if user_id == initiator_user_id {
+            return Err("You cannot accept your own connection request".into());
+        }
+
+        // Determine user1_id and user2_id (user1 should be lexicographically smaller)
+        let (user1_id, user2_id) = if user_id < initiator_user_id.as_str() {
+            (user_id, initiator_user_id.as_str())
+        } else {
+            (initiator_user_id.as_str(), user_id)
+        };
+
+        // Find the pending connection between these users that was initiated by initiator_username
+        let connection_row = sqlx::query(
+            "SELECT id, status FROM connections WHERE user1_id = ? AND user2_id = ? AND initiated_by = ?",
+        )
+        .bind(user1_id)
+        .bind(user2_id)
+        .bind(&initiator_user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (connection_id, status) = match connection_row {
+            Some(row) => (row.get::<String, _>("id"), row.get::<String, _>("status")),
+            None => {
+                return Err(
+                    "Connection not found or you are not authorized to accept this connection"
+                        .into(),
+                );
+            }
+        };
+
+        // Check if connection is already accepted
+        if status == "accepted" {
+            return Err("Connection is already accepted".into());
+        }
+
+        // Update the connection status to accepted
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE connections SET status = 'accepted', updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(&connection_id)
             .execute(&self.pool)
             .await?;
 
@@ -617,6 +679,103 @@ impl Database {
         tx.commit().await?;
         Ok(())
     }
+
+    // Yo message methods
+    pub async fn create_yo_message(
+        &self,
+        from_user_id: &str,
+        to_username: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        // Find the target user by username
+        let target_user_row = sqlx::query("SELECT id FROM users WHERE username = ?")
+            .bind(to_username)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        let to_user_id = match target_user_row {
+            Some(row) => row.get::<String, _>("id"),
+            None => return Err("User not found".into()),
+        };
+
+        // Check if users are trying to send to themselves
+        if from_user_id == to_user_id {
+            return Err("Cannot send yo to yourself".into());
+        }
+
+        // Check if users are connected (accepted connection exists)
+        let connection_exists = sqlx::query(
+            "SELECT id FROM connections WHERE ((user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)) AND status = 'accepted'"
+        )
+        .bind(from_user_id)
+        .bind(&to_user_id)
+        .bind(&to_user_id)
+        .bind(from_user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if connection_exists.is_none() {
+            return Err("You can only send yo messages to your friends".into());
+        }
+
+        // Create the yo message
+        let message_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO yo_messages (id, from_user_id, to_user_id, sent_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&message_id)
+        .bind(from_user_id)
+        .bind(to_user_id)
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(message_id)
+    }
+
+    pub async fn get_yo_messages(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<YoMessage>, Box<dyn std::error::Error>> {
+        let rows = sqlx::query(
+            "SELECT ym.id, ym.from_user_id, ym.to_user_id, ym.sent_at, ym.created_at,
+                    u_from.username as from_username, u_to.username as to_username
+             FROM yo_messages ym
+             JOIN users u_from ON ym.from_user_id = u_from.id
+             JOIN users u_to ON ym.to_user_id = u_to.id
+             WHERE ym.to_user_id = ? OR ym.from_user_id = ?
+             ORDER BY ym.sent_at DESC
+             LIMIT 100",
+        )
+        .bind(user_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let messages = rows
+            .into_iter()
+            .map(|row| YoMessage {
+                id: row.get("id"),
+                from_username: row.get("from_username"),
+                to_username: row.get("to_username"),
+                sent_at: row.get("sent_at"),
+                is_from_me: row.get::<String, _>("from_user_id") == user_id,
+            })
+            .collect();
+
+        Ok(messages)
+    }
+}
+
+pub struct YoMessage {
+    pub id: String,
+    pub from_username: String,
+    pub to_username: String,
+    pub sent_at: String,
+    pub is_from_me: bool,
 }
 
 pub struct ConnectionInfo {
