@@ -197,15 +197,48 @@ pub struct AcceptConnectionResponse {
 
 // Admin-related structures (not needed anymore with path parameters)
 
+// App creation function
+pub fn create_app(db: AppState) -> Router {
+    Router::new()
+        .route("/", get(index))
+        .route("/friends", get(friends))
+        .route("/admin", get(admin))
+        .route("/swagger-ui", get(swagger))
+        .route("/admin/create-user/{username}", get(admin_create_user))
+        .route(
+            "/admin/create-connection/{from}/{to}",
+            get(admin_create_connection),
+        )
+        .route(
+            "/admin/accept-connection/{id}",
+            get(admin_accept_connection),
+        )
+        .route(
+            "/admin/reject-connection/{id}",
+            get(admin_reject_connection),
+        )
+        .route("/admin/delete-user/{user_id}", get(admin_delete_user))
+        .route("/api/register", post(register_user))
+        .route("/api/login", post(login_user))
+        .route("/api/connections", post(add_connection))
+        .route("/api/connections", get(get_connections))
+        .route("/api/connections/accept", post(accept_connection))
+        .route(
+            "/api-docs/openapi.json",
+            get(|| async { Json(ApiDoc::openapi()) }),
+        )
+        .with_state(db)
+}
+
 // Web Handler functions
-async fn index(State(db): State<AppState>) -> impl IntoResponse {
+pub async fn index(State(db): State<AppState>) -> impl IntoResponse {
     let users = db.get_all_users().await.unwrap_or_default();
     let total_users = users.len() as i64;
     let template = IndexTemplate { users, total_users };
     Html(template.render().unwrap())
 }
 
-async fn friends(State(db): State<AppState>) -> impl IntoResponse {
+pub async fn friends(State(db): State<AppState>) -> impl IntoResponse {
     let users_with_friends = db.get_users_with_friends().await.unwrap_or_default();
     let total_users_with_friends = users_with_friends.len() as i64;
     let template = FriendsTemplate {
@@ -215,7 +248,7 @@ async fn friends(State(db): State<AppState>) -> impl IntoResponse {
     Html(template.render().unwrap())
 }
 
-async fn admin(State(db): State<AppState>) -> impl IntoResponse {
+pub async fn admin(State(db): State<AppState>) -> impl IntoResponse {
     let users = db.get_all_users().await.unwrap_or_default();
 
     // Calculate next user name
@@ -267,7 +300,7 @@ async fn admin(State(db): State<AppState>) -> impl IntoResponse {
     Html(template.render().unwrap())
 }
 
-async fn swagger() -> impl IntoResponse {
+pub async fn swagger() -> impl IntoResponse {
     let template = SwaggerTemplate;
     Html(template.render().unwrap())
 }
@@ -285,7 +318,7 @@ async fn swagger() -> impl IntoResponse {
     ),
     tag = "Authentication"
 )]
-async fn register_user(
+pub async fn register_user(
     State(db): State<AppState>,
     Json(request): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -348,7 +381,7 @@ async fn register_user(
     ),
     tag = "Authentication"
 )]
-async fn login_user(
+pub async fn login_user(
     State(db): State<AppState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -419,7 +452,7 @@ async fn login_user(
 }
 
 // Helper function to extract token from Authorization header
-fn extract_token_from_headers(headers: &HeaderMap) -> Result<String, String> {
+pub fn extract_token_from_headers(headers: &HeaderMap) -> Result<String, String> {
     let auth_header = headers
         .get("Authorization")
         .ok_or("Missing Authorization header")?
@@ -451,7 +484,7 @@ fn extract_token_from_headers(headers: &HeaderMap) -> Result<String, String> {
         ("bearer_auth" = [])
     )
 )]
-async fn add_connection(
+pub async fn add_connection(
     State(db): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<AddConnectionRequest>,
@@ -534,7 +567,7 @@ async fn add_connection(
         ("bearer_auth" = [])
     )
 )]
-async fn get_connections(
+pub async fn get_connections(
     State(db): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<ConnectionsResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -598,7 +631,7 @@ async fn get_connections(
         ("bearer_auth" = [])
     )
 )]
-async fn accept_connection(
+pub async fn accept_connection(
     State(db): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<AcceptConnectionRequest>,
@@ -935,36 +968,8 @@ async fn main() {
 
     let app_state = Arc::new(db);
 
-    // Build the router
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/friends", get(friends))
-        .route("/admin", get(admin))
-        .route("/swagger-ui", get(swagger))
-        .route("/admin/create-user/{username}", get(admin_create_user))
-        .route(
-            "/admin/create-connection/{from}/{to}",
-            get(admin_create_connection),
-        )
-        .route(
-            "/admin/accept-connection/{id}",
-            get(admin_accept_connection),
-        )
-        .route(
-            "/admin/reject-connection/{id}",
-            get(admin_reject_connection),
-        )
-        .route("/admin/delete-user/{user_id}", get(admin_delete_user))
-        .route("/api/register", post(register_user))
-        .route("/api/login", post(login_user))
-        .route("/api/connections", post(add_connection))
-        .route("/api/connections", get(get_connections))
-        .route("/api/connections/accept", post(accept_connection))
-        .route(
-            "/api-docs/openapi.json",
-            get(|| async { Json(ApiDoc::openapi()) }),
-        )
-        .with_state(app_state);
+    // Build the router using the shared function
+    let app = create_app(app_state);
 
     // Start the server
     let bind_address = format!("127.0.0.1:{}", port);
