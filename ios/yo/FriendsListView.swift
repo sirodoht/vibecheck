@@ -257,8 +257,21 @@ struct ConnectionRow: View {
                                 .background(Color.blue.opacity(0.2))
                                 .cornerRadius(4)
                         }
+                    } else if connection.connectionStatus?.lowercased() == "accepted" {
+                        // Accepted friend - show "Send Yo" button
+                        Button {
+                            // TODO: Implement sending "yo" to friend
+                            print("Send yo to \(connection.username)")
+                        } label: {
+                            Text("Send Yo")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .frame(width: 80, height: 32)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
                     } else {
-                        // Accepted friend - show status indicator
+                        // Rejected or other status - show status indicator
                         HStack(spacing: 4) {
                             Circle()
                                 .fill(statusColor)
