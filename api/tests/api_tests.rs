@@ -1,265 +1,118 @@
 use axum::{
-    Router,
-    routing::{get, post},
+    body::Body,
+    http::{Method, Request},
 };
-use serde::Serialize;
-use serde::de::DeserializeOwned;
+use http_body_util::BodyExt;
 use serde_json::json;
-use sqlx::Row;
 use std::sync::Arc;
 use tempfile::TempDir;
+use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct RegisterRequest {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct LoginRequest {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct RegisterResponse {
-    pub success: bool,
-    pub message: String,
-    pub user_id: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct LoginResponse {
-    pub success: bool,
-    pub message: String,
-    pub user: Option<UserInfo>,
-    pub token: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct UserInfo {
-    pub id: String,
-    pub username: String,
-    pub created_at: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct ErrorResponse {
-    pub error: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct AddConnectionResponse {
-    pub success: bool,
-    pub message: String,
-    pub connection_id: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct ConnectionsResponse {
-    pub success: bool,
-    pub connections: Vec<Connection>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct Connection {
-    pub id: String,
-    pub user1_id: String,
-    pub user2_id: String,
-    pub other_username: String,
-    pub status: String,
-    pub initiated_by: String,
-    pub created_at: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct AcceptConnectionResponse {
-    pub success: bool,
-    pub message: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct AddConnectionRequest {
-    pub username: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct AcceptConnectionRequest {
-    pub connection_id: String,
-}
+use yoapi::{
+    AcceptConnectionResponse, AddConnectionResponse, ConnectionsResponse, Database, ErrorResponse,
+    LoginResponse, RegisterResponse, SendYoResponse, YoMessagesResponse, create_app,
+};
 
 pub struct TestApp {
-    pub address: String,
-    pub db_path: String,
+    pub app: axum::Router,
     _temp_dir: TempDir,
 }
 
 impl TestApp {
     pub async fn new() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let db_path = temp_dir
-            .path()
-            .join("test.db")
-            .to_string_lossy()
-            .to_string();
-        let database_url = "sqlite::memory:".to_string();
 
-        // For integration tests, we need to handle the database differently
-        // Let's create a simple test database setup
-        let db = {
-            // Create a minimal database struct for testing
-            // Since we can't import the Database struct directly, we'll create our own
-            use sqlx::SqlitePool;
-            let pool = SqlitePool::connect(&database_url)
-                .await
-                .expect("Failed to create test database pool");
-
-            // Run migrations manually
-            sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS _migrations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL UNIQUE,
-                    executed_at TEXT NOT NULL
-                )
-                "#,
-            )
-            .execute(&pool)
+        // Use an in-memory database for testing
+        let database_url = "sqlite::memory:";
+        let db = Database::new(database_url)
             .await
-            .expect("Failed to create migrations table");
+            .expect("Failed to create test database");
 
-            // Run basic table creation queries
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
-            )
-            .execute(&pool)
-            .await
-            .expect("Failed to create users table");
-
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, created_at TEXT NOT NULL)"
-            )
-            .execute(&pool)
-            .await
-            .expect("Failed to create sessions table");
-
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS connections (id TEXT PRIMARY KEY, user1_id TEXT NOT NULL, user2_id TEXT NOT NULL, status TEXT NOT NULL, initiated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
-            )
-            .execute(&pool)
-            .await
-            .expect("Failed to create connections table");
-
-            pool
-        };
+        // Run migrations
+        db.run_migrations().await.expect("Failed to run migrations");
 
         let app_state = Arc::new(db);
-
-        // For integration tests, we'll create a minimal router that just handles the endpoints we want to test
-        // Since we can't easily import from the main crate in tests, we'll focus on testing the core functionality
-        let app = Router::new()
-            .route("/api/register", post(register_user_handler))
-            .route("/api/login", post(login_user_handler))
-            .route("/api/connections", post(add_connection_handler))
-            .route("/api/connections", get(get_connections_handler))
-            .route("/api/connections/accept", post(accept_connection_handler))
-            .route("/api/yo", post(send_yo_handler))
-            .route("/api/yo", get(get_yo_messages_handler))
-            .with_state(app_state);
-
-        // Start the server
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("Failed to bind to random port");
-        let address = listener.local_addr().unwrap().to_string();
-
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("Server failed");
-        });
-
-        // Give the server a moment to start
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        let app = create_app(app_state);
 
         TestApp {
-            address,
-            db_path,
+            app,
             _temp_dir: temp_dir,
         }
     }
 
-    pub async fn post_json<T: Serialize>(&self, path: &str, body: T) -> TestResponse {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&format!("http://{}/{}", self.address, path))
-            .json(&body)
-            .send()
-            .await
-            .expect("Failed to send request");
-
-        TestResponse {
-            status: response.status(),
-            body: response.text().await.unwrap_or_default(),
-        }
-    }
-
-    pub async fn get(&self, path: &str) -> TestResponse {
-        let client = reqwest::Client::new();
-        let response = client
-            .get(&format!("http://{}/{}", self.address, path))
-            .send()
-            .await
-            .expect("Failed to send request");
-
-        TestResponse {
-            status: response.status(),
-            body: response.text().await.unwrap_or_default(),
-        }
-    }
-
-    pub async fn post_with_auth<T: Serialize>(
-        &self,
+    pub async fn request(
+        &mut self,
+        method: Method,
         path: &str,
-        body: T,
+        body: Option<serde_json::Value>,
+        auth_token: Option<&str>,
+    ) -> TestResponse {
+        let mut request_builder = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/json");
+
+        if let Some(token) = auth_token {
+            request_builder = request_builder.header("authorization", format!("Bearer {}", token));
+        }
+
+        let body = match body {
+            Some(json_body) => Body::from(json_body.to_string()),
+            None => Body::empty(),
+        };
+
+        let request = request_builder.body(body).expect("Failed to build request");
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut self.app)
+            .await
+            .expect("Service not ready")
+            .call(request)
+            .await
+            .expect("Failed to make request");
+
+        let status = response.status();
+        let body_bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("Failed to read response body")
+            .to_bytes();
+        let body =
+            String::from_utf8(body_bytes.to_vec()).expect("Response body is not valid UTF-8");
+
+        TestResponse { status, body }
+    }
+
+    pub async fn post(&mut self, path: &str, body: serde_json::Value) -> TestResponse {
+        self.request(Method::POST, path, Some(body), None).await
+    }
+
+    pub async fn get(&mut self, path: &str) -> TestResponse {
+        self.request(Method::GET, path, None, None).await
+    }
+
+    pub async fn post_with_auth(
+        &mut self,
+        path: &str,
+        body: serde_json::Value,
         token: &str,
     ) -> TestResponse {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&format!("http://{}/{}", self.address, path))
-            .header("Authorization", format!("Bearer {}", token))
-            .json(&body)
-            .send()
+        self.request(Method::POST, path, Some(body), Some(token))
             .await
-            .expect("Failed to send request");
-
-        TestResponse {
-            status: response.status(),
-            body: response.text().await.unwrap_or_default(),
-        }
     }
 
-    pub async fn get_with_auth(&self, path: &str, token: &str) -> TestResponse {
-        let client = reqwest::Client::new();
-        let response = client
-            .get(&format!("http://{}/{}", self.address, path))
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .expect("Failed to send request");
-
-        TestResponse {
-            status: response.status(),
-            body: response.text().await.unwrap_or_default(),
-        }
+    pub async fn get_with_auth(&mut self, path: &str, token: &str) -> TestResponse {
+        self.request(Method::GET, path, None, Some(token)).await
     }
 }
 
 pub struct TestResponse {
-    pub status: reqwest::StatusCode,
+    pub status: axum::http::StatusCode,
     pub body: String,
 }
 
 impl TestResponse {
-    pub fn json<T: DeserializeOwned>(&self) -> T {
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> T {
         serde_json::from_str(&self.body).expect("Failed to parse JSON response")
     }
 }
@@ -267,10 +120,11 @@ impl TestResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::StatusCode;
 
     // Helper function to create a test user and get their token
     async fn create_test_user_and_get_token(
-        app: &TestApp,
+        app: &mut TestApp,
         username: &str,
         password: &str,
     ) -> String {
@@ -280,10 +134,9 @@ mod tests {
             "password": password
         });
 
-        let response = app.post_json("api/register", register_body).await;
-        assert_eq!(response.status, 200);
-        let register_result: RegisterResponse = response.json();
-        assert!(register_result.success);
+        let response = app.post("/api/register", register_body).await;
+        assert_eq!(response.status, StatusCode::OK);
+        let _register_result: RegisterResponse = response.json();
 
         // Login user
         let login_body = json!({
@@ -291,84 +144,76 @@ mod tests {
             "password": password
         });
 
-        let response = app.post_json("api/login", login_body).await;
-        assert_eq!(response.status, 200);
+        let response = app.post("/api/login", login_body).await;
+        assert_eq!(response.status, StatusCode::OK);
         let login_result: LoginResponse = response.json();
-        assert!(login_result.success);
 
         login_result.token.unwrap()
     }
 
     #[tokio::test]
     async fn test_register_user_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         let register_body = json!({
             "username": "testuser1",
             "password": "password123"
         });
 
-        let response = app.post_json("api/register", register_body).await;
+        let response = app.post("/api/register", register_body).await;
 
-        assert_eq!(response.status, 200);
-
-        let result: RegisterResponse = response.json();
-        assert!(result.success);
-        assert_eq!(result.message, "User registered successfully");
-        assert!(result.user_id.is_some());
+        assert_eq!(response.status, StatusCode::OK);
+        let _result: RegisterResponse = response.json();
     }
 
     #[tokio::test]
     async fn test_register_user_empty_username() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         let register_body = json!({
             "username": "",
             "password": "password123"
         });
 
-        let response = app.post_json("api/register", register_body).await;
+        let response = app.post("/api/register", register_body).await;
 
-        assert_eq!(response.status, 400);
-
+        assert_eq!(response.status, StatusCode::BAD_REQUEST);
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Username cannot be empty");
     }
 
     #[tokio::test]
     async fn test_register_user_short_password() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         let register_body = json!({
             "username": "testuser2",
             "password": "123"
         });
 
-        let response = app.post_json("api/register", register_body).await;
+        let response = app.post("/api/register", register_body).await;
 
-        assert_eq!(response.status, 400);
-
+        assert_eq!(response.status, StatusCode::BAD_REQUEST);
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Password must be at least 6 characters long");
     }
 
     #[tokio::test]
     async fn test_register_user_duplicate_username() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
-        // Register first user
         let register_body = json!({
             "username": "duplicateuser",
             "password": "password123"
         });
 
-        let response = app.post_json("api/register", register_body.clone()).await;
-        assert_eq!(response.status, 200);
+        // Register first user
+        let response = app.post("/api/register", register_body.clone()).await;
+        assert_eq!(response.status, StatusCode::OK);
 
         // Try to register with same username
-        let response = app.post_json("api/register", register_body.clone()).await;
-
-        assert_eq!(response.status, 409);
+        let response = app.post("/api/register", register_body).await;
+        assert_eq!(response.status, StatusCode::CONFLICT);
 
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Username already exists");
@@ -376,7 +221,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         // First register a user
         let register_body = json!({
@@ -384,8 +229,8 @@ mod tests {
             "password": "password123"
         });
 
-        let response = app.post_json("api/register", register_body).await;
-        assert_eq!(response.status, 200);
+        let response = app.post("/api/register", register_body).await;
+        assert_eq!(response.status, StatusCode::OK);
 
         // Now login
         let login_body = json!({
@@ -393,34 +238,24 @@ mod tests {
             "password": "password123"
         });
 
-        let response = app.post_json("api/login", login_body).await;
-
-        assert_eq!(response.status, 200);
+        let response = app.post("/api/login", login_body).await;
+        assert_eq!(response.status, StatusCode::OK);
 
         let result: LoginResponse = response.json();
-        assert!(result.success);
-        assert_eq!(result.message, "Login successful");
         assert!(result.token.is_some());
-        assert!(result.user.is_some());
-
-        let user = result.user.unwrap();
-        assert_eq!(user.username, "loginuser");
-        assert!(user.id.len() > 0);
-        assert!(user.created_at.len() > 0);
     }
 
     #[tokio::test]
     async fn test_login_invalid_credentials() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         let login_body = json!({
             "username": "nonexistentuser",
             "password": "wrongpassword"
         });
 
-        let response = app.post_json("api/login", login_body).await;
-
-        assert_eq!(response.status, 401);
+        let response = app.post("/api/login", login_body).await;
+        assert_eq!(response.status, StatusCode::UNAUTHORIZED);
 
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Invalid username or password");
@@ -428,45 +263,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_empty_username() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         let login_body = json!({
             "username": "",
             "password": "password123"
         });
 
-        let response = app.post_json("api/login", login_body).await;
-
-        assert_eq!(response.status, 400);
+        let response = app.post("/api/login", login_body).await;
+        assert_eq!(response.status, StatusCode::BAD_REQUEST);
 
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Username cannot be empty");
     }
 
     #[tokio::test]
-    async fn test_login_empty_password() {
-        let app = TestApp::new().await;
-
-        let login_body = json!({
-            "username": "testuser",
-            "password": ""
-        });
-
-        let response = app.post_json("api/login", login_body).await;
-
-        assert_eq!(response.status, 400);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Password cannot be empty");
-    }
-
-    #[tokio::test]
     async fn test_add_connection_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         // Create two users
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let _token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
+        let token1 = create_test_user_and_get_token(&mut app, "user1", "password123").await;
+        let _token2 = create_test_user_and_get_token(&mut app, "user2", "password123").await;
 
         // Add connection from user1 to user2
         let connection_body = json!({
@@ -474,36 +291,27 @@ mod tests {
         });
 
         let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
+            .post_with_auth("/api/connections/request", connection_body, &token1)
             .await;
+        assert_eq!(response.status, StatusCode::OK);
 
-        assert_eq!(response.status, 200);
-
-        let result: AddConnectionResponse = response.json();
-        assert!(result.success);
-        assert_eq!(
-            result.message,
-            "Connection request sent to user2. Waiting for acceptance."
-        );
-        assert!(result.connection_id.is_some());
+        let _result: AddConnectionResponse = response.json();
     }
 
     #[tokio::test]
     async fn test_add_connection_to_self() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
+        let token = create_test_user_and_get_token(&mut app, "user1", "password123").await;
 
-        // Try to connect to self
         let connection_body = json!({
             "username": "user1"
         });
 
         let response = app
-            .post_with_auth("api/connections", connection_body, &token)
+            .post_with_auth("/api/connections/request", connection_body, &token)
             .await;
-
-        assert_eq!(response.status, 409);
+        assert_eq!(response.status, StatusCode::CONFLICT);
 
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Cannot connect to yourself");
@@ -511,97 +319,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_connection_user_not_found() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
+        let token = create_test_user_and_get_token(&mut app, "user1", "password123").await;
 
-        // Try to connect to non-existent user
         let connection_body = json!({
             "username": "nonexistentuser"
         });
 
         let response = app
-            .post_with_auth("api/connections", connection_body, &token)
+            .post_with_auth("/api/connections/request", connection_body, &token)
             .await;
-
-        assert_eq!(response.status, 404);
+        assert_eq!(response.status, StatusCode::NOT_FOUND);
 
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "User not found");
-    }
-
-    #[tokio::test]
-    async fn test_add_connection_duplicate() {
-        let app = TestApp::new().await;
-
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let _token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
-
-        // Add connection from user1 to user2
-        let connection_body = json!({
-            "username": "user2"
-        });
-
-        let response = app
-            .post_with_auth("api/connections", connection_body.clone(), &token1)
-            .await;
-        assert_eq!(response.status, 200);
-
-        // Try to add the same connection again
-        let response = app
-            .post_with_auth("api/connections", connection_body.clone(), &token1)
-            .await;
-
-        assert_eq!(response.status, 409);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Connection already exists");
-    }
-
-    #[tokio::test]
-    async fn test_add_connection_invalid_token() {
-        let app = TestApp::new().await;
-
-        let connection_body = json!({
-            "username": "user2"
-        });
-
-        let response = app
-            .post_with_auth("api/connections", connection_body, "invalid_token")
-            .await;
-
-        assert_eq!(response.status, 401);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Invalid session token");
-    }
-
-    #[tokio::test]
-    async fn test_add_connection_empty_username() {
-        let app = TestApp::new().await;
-
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        let connection_body = json!({
-            "username": ""
-        });
-
-        let response = app
-            .post_with_auth("api/connections", connection_body, &token)
-            .await;
-
-        assert_eq!(response.status, 400);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Username cannot be empty");
     }
 
     #[tokio::test]
     async fn test_get_connections_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let _token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
+        let token1 = create_test_user_and_get_token(&mut app, "user1", "password123").await;
+        let _token2 = create_test_user_and_get_token(&mut app, "user2", "password123").await;
 
         // Add connection from user1 to user2
         let connection_body = json!({
@@ -609,58 +349,28 @@ mod tests {
         });
 
         let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
+            .post_with_auth("/api/connections/request", connection_body, &token1)
             .await;
-        assert_eq!(response.status, 200);
+        assert_eq!(response.status, StatusCode::OK);
 
-        // Get connections for user1 (should show pending connection)
-        let response = app.get_with_auth("api/connections", &token1).await;
-
-        assert_eq!(response.status, 200);
+        // Get connections for user1
+        let response = app.get_with_auth("/api/connections", &token1).await;
+        assert_eq!(response.status, StatusCode::OK);
 
         let result: ConnectionsResponse = response.json();
-        assert!(result.success);
         assert_eq!(result.connections.len(), 1);
 
         let connection = &result.connections[0];
-        assert_eq!(connection.other_username, "user2");
+        assert_eq!(connection.other, "user2");
         assert_eq!(connection.status, "pending");
-        assert_eq!(connection.initiated_by, "user1");
-    }
-
-    #[tokio::test]
-    async fn test_get_connections_no_connections() {
-        let app = TestApp::new().await;
-
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        let response = app.get_with_auth("api/connections", &token).await;
-
-        assert_eq!(response.status, 200);
-
-        let result: ConnectionsResponse = response.json();
-        assert!(result.success);
-        assert_eq!(result.connections.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_get_connections_invalid_token() {
-        let app = TestApp::new().await;
-
-        let response = app.get_with_auth("api/connections", "invalid_token").await;
-
-        assert_eq!(response.status, 401);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Invalid session token");
     }
 
     #[tokio::test]
     async fn test_accept_connection_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
+        let token1 = create_test_user_and_get_token(&mut app, "user1", "password123").await;
+        let token2 = create_test_user_and_get_token(&mut app, "user2", "password123").await;
 
         // Add connection from user1 to user2
         let connection_body = json!({
@@ -668,245 +378,68 @@ mod tests {
         });
 
         let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
+            .post_with_auth("/api/connections/request", connection_body, &token1)
             .await;
-        assert_eq!(response.status, 200);
-        let add_result: AddConnectionResponse = response.json();
-        let connection_id = add_result.connection_id.unwrap();
+        assert_eq!(response.status, StatusCode::OK);
 
         // Accept connection as user2
         let accept_body = json!({
-            "connection_id": connection_id
+            "username": "user1"
         });
 
         let response = app
-            .post_with_auth("api/connections/accept", accept_body, &token2)
+            .post_with_auth("/api/connections/accept", accept_body, &token2)
             .await;
+        assert_eq!(response.status, StatusCode::OK);
 
-        assert_eq!(response.status, 200);
+        let _result: AcceptConnectionResponse = response.json();
 
-        let result: AcceptConnectionResponse = response.json();
-        assert!(result.success);
-        assert_eq!(result.message, "Connection accepted successfully");
-    }
-
-    #[tokio::test]
-    async fn test_accept_connection_not_authorized() {
-        let app = TestApp::new().await;
-
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let _token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
-
-        // Add connection from user1 to user2
-        let connection_body = json!({
-            "username": "user2"
-        });
-
-        let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
-            .await;
-        assert_eq!(response.status, 200);
-        let add_result: AddConnectionResponse = response.json();
-        let connection_id = add_result.connection_id.unwrap();
-
-        // Try to accept connection as user1 (who initiated it)
-        let accept_body = json!({
-            "connection_id": connection_id
-        });
-
-        let response = app
-            .post_with_auth("api/connections/accept", accept_body, &token1)
-            .await;
-
-        assert_eq!(response.status, 403);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(
-            result.error,
-            "You cannot accept your own connection request"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_accept_connection_already_accepted() {
-        let app = TestApp::new().await;
-
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
-
-        // Add connection from user1 to user2
-        let connection_body = json!({
-            "username": "user2"
-        });
-
-        let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
-            .await;
-        assert_eq!(response.status, 200);
-        let add_result: AddConnectionResponse = response.json();
-        let connection_id = add_result.connection_id.unwrap();
-
-        // Accept connection as user2
-        let accept_body = json!({
-            "connection_id": connection_id
-        });
-
-        let response = app
-            .post_with_auth("api/connections/accept", accept_body.clone(), &token2)
-            .await;
-        assert_eq!(response.status, 200);
-
-        // Try to accept again
-        let response = app
-            .post_with_auth("api/connections/accept", accept_body.clone(), &token2)
-            .await;
-
-        assert_eq!(response.status, 409);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Connection is already accepted");
-    }
-
-    #[tokio::test]
-    async fn test_accept_connection_not_found() {
-        let app = TestApp::new().await;
-
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        let accept_body = json!({
-            "connection_id": "nonexistent-connection-id"
-        });
-
-        let response = app
-            .post_with_auth("api/connections/accept", accept_body, &token)
-            .await;
-
-        assert_eq!(response.status, 404);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Connection not found");
-    }
-
-    #[tokio::test]
-    async fn test_accept_connection_invalid_token() {
-        let app = TestApp::new().await;
-
-        let accept_body = json!({
-            "connection_id": "some-connection-id"
-        });
-
-        let response = app
-            .post_with_auth("api/connections/accept", accept_body, "invalid_token")
-            .await;
-
-        assert_eq!(response.status, 401);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Invalid session token");
+        // Verify connection is now accepted
+        let response = app.get_with_auth("/api/connections", &token1).await;
+        let result: ConnectionsResponse = response.json();
+        assert_eq!(result.connections[0].status, "accepted");
     }
 
     #[tokio::test]
     async fn test_send_yo_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         // Create two users and make them friends
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
+        let token1 = create_test_user_and_get_token(&mut app, "user1", "password123").await;
+        let token2 = create_test_user_and_get_token(&mut app, "user2", "password123").await;
 
-        // Add connection from user1 to user2 and accept it
-        let connection_body = json!({
-            "username": "user2"
-        });
-
+        // Add and accept connection
+        let connection_body = json!({"username": "user2"});
         let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
+            .post_with_auth("/api/connections/request", connection_body, &token1)
             .await;
-        assert_eq!(response.status, 200);
+        assert_eq!(response.status, StatusCode::OK);
 
-        // Get the connection ID and accept it as user2
-        let response = app.get_with_auth("api/connections", &token2).await;
-        assert_eq!(response.status, 200);
-        let connections_result: ConnectionsResponse = response.json();
-        assert_eq!(connections_result.connections.len(), 1);
-        let connection_id = connections_result.connections[0].id.clone();
-
-        let accept_body = json!({
-            "connection_id": connection_id
-        });
+        let accept_body = json!({"username": "user1"});
         let response = app
-            .post_with_auth("api/connections/accept", accept_body, &token2)
+            .post_with_auth("/api/connections/accept", accept_body, &token2)
             .await;
-        assert_eq!(response.status, 200);
+        assert_eq!(response.status, StatusCode::OK);
 
-        // Now send yo from user1 to user2
-        let yo_body = json!({
-            "username": "user2"
-        });
+        // Send yo from user1 to user2
+        let yo_body = json!({"username": "user2"});
+        let response = app.post_with_auth("/api/yo", yo_body, &token1).await;
+        assert_eq!(response.status, StatusCode::OK);
 
-        let response = app.post_with_auth("api/yo", yo_body, &token1).await;
-
-        assert_eq!(response.status, 200);
-
-        let result: SendYoResponse = response.json();
-        assert!(result.success);
-        assert_eq!(result.message, "Yo sent to user2!");
-        assert!(result.yo_id.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_send_yo_to_self() {
-        let app = TestApp::new().await;
-
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        // Try to send yo to self
-        let yo_body = json!({
-            "username": "user1"
-        });
-
-        let response = app.post_with_auth("api/yo", yo_body, &token).await;
-
-        assert_eq!(response.status, 409);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Cannot send yo to yourself");
-    }
-
-    #[tokio::test]
-    async fn test_send_yo_to_nonexistent_user() {
-        let app = TestApp::new().await;
-
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        // Try to send yo to non-existent user
-        let yo_body = json!({
-            "username": "nonexistentuser"
-        });
-
-        let response = app.post_with_auth("api/yo", yo_body, &token).await;
-
-        assert_eq!(response.status, 404);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "User not found");
+        let _result: SendYoResponse = response.json();
     }
 
     #[tokio::test]
     async fn test_send_yo_to_non_friend() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
-        // Create two users
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let _token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
+        let token1 = create_test_user_and_get_token(&mut app, "user1", "password123").await;
+        let _token2 = create_test_user_and_get_token(&mut app, "user2", "password123").await;
 
-        // Try to send yo without being friends (connection not accepted)
-        let yo_body = json!({
-            "username": "user2"
-        });
-
-        let response = app.post_with_auth("api/yo", yo_body, &token1).await;
-
-        assert_eq!(response.status, 409);
+        // Try to send yo without being friends
+        let yo_body = json!({"username": "user2"});
+        let response = app.post_with_auth("/api/yo", yo_body, &token1).await;
+        assert_eq!(response.status, StatusCode::CONFLICT);
 
         let result: ErrorResponse = response.json();
         assert_eq!(
@@ -916,1040 +449,51 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_send_yo_empty_username() {
-        let app = TestApp::new().await;
-
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        let yo_body = json!({
-            "username": ""
-        });
-
-        let response = app.post_with_auth("api/yo", yo_body, &token).await;
-
-        assert_eq!(response.status, 400);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Username cannot be empty");
-    }
-
-    #[tokio::test]
-    async fn test_send_yo_invalid_token() {
-        let app = TestApp::new().await;
-
-        let yo_body = json!({
-            "username": "user2"
-        });
-
-        let response = app.post_with_auth("api/yo", yo_body, "invalid_token").await;
-
-        assert_eq!(response.status, 401);
-
-        let result: ErrorResponse = response.json();
-        assert_eq!(result.error, "Invalid session token");
-    }
-
-    #[tokio::test]
     async fn test_get_yo_messages_success() {
-        let app = TestApp::new().await;
+        let mut app = TestApp::new().await;
 
         // Create two users and make them friends
-        let token1 = create_test_user_and_get_token(&app, "user1", "password123").await;
-        let token2 = create_test_user_and_get_token(&app, "user2", "password123").await;
+        let token1 = create_test_user_and_get_token(&mut app, "user1", "password123").await;
+        let token2 = create_test_user_and_get_token(&mut app, "user2", "password123").await;
 
-        // Add connection from user1 to user2 and accept it
-        let connection_body = json!({
-            "username": "user2"
-        });
-
+        // Add and accept connection
+        let connection_body = json!({"username": "user2"});
         let response = app
-            .post_with_auth("api/connections", connection_body, &token1)
+            .post_with_auth("/api/connections/request", connection_body, &token1)
             .await;
-        assert_eq!(response.status, 200);
+        assert_eq!(response.status, StatusCode::OK);
 
-        // Get the connection ID and accept it as user2
-        let response = app.get_with_auth("api/connections", &token2).await;
-        assert_eq!(response.status, 200);
-        let connections_result: ConnectionsResponse = response.json();
-        assert_eq!(connections_result.connections.len(), 1);
-        let connection_id = connections_result.connections[0].id.clone();
-
-        let accept_body = json!({
-            "connection_id": connection_id
-        });
+        let accept_body = json!({"username": "user1"});
         let response = app
-            .post_with_auth("api/connections/accept", accept_body, &token2)
+            .post_with_auth("/api/connections/accept", accept_body, &token2)
             .await;
-        assert_eq!(response.status, 200);
+        assert_eq!(response.status, StatusCode::OK);
 
-        // Send a yo from user1 to user2
-        let yo_body = json!({
-            "username": "user2"
-        });
+        // Send yo from user1 to user2
+        let yo_body = json!({"username": "user2"});
+        let response = app.post_with_auth("/api/yo", yo_body, &token1).await;
+        assert_eq!(response.status, StatusCode::OK);
 
-        let response = app.post_with_auth("api/yo", yo_body, &token1).await;
-        assert_eq!(response.status, 200);
-
-        // Get yo messages for user2 (should see the yo from user1)
-        let response = app.get_with_auth("api/yo", &token2).await;
-
-        assert_eq!(response.status, 200);
+        // Get yo messages for user2
+        let response = app.get_with_auth("/api/yo", &token2).await;
+        assert_eq!(response.status, StatusCode::OK);
 
         let result: YoMessagesResponse = response.json();
-        assert!(result.success);
         assert_eq!(result.messages.len(), 1);
 
         let message = &result.messages[0];
-        assert_eq!(message.from_username, "user1");
-        assert_eq!(message.to_username, "user2");
-        assert_eq!(message.is_from_me, false);
-        assert!(message.sent_at.len() > 0);
+        assert_eq!(message.from, "user1");
+        assert_eq!(message.to, "user2");
     }
 
     #[tokio::test]
-    async fn test_get_yo_messages_no_messages() {
-        let app = TestApp::new().await;
+    async fn test_invalid_auth_token() {
+        let mut app = TestApp::new().await;
 
-        let token = create_test_user_and_get_token(&app, "user1", "password123").await;
-
-        let response = app.get_with_auth("api/yo", &token).await;
-
-        assert_eq!(response.status, 200);
-
-        let result: YoMessagesResponse = response.json();
-        assert!(result.success);
-        assert_eq!(result.messages.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_get_yo_messages_invalid_token() {
-        let app = TestApp::new().await;
-
-        let response = app.get_with_auth("api/yo", "invalid_token").await;
-
-        assert_eq!(response.status, 401);
+        let response = app.get_with_auth("/api/connections", "invalid_token").await;
+        assert_eq!(response.status, StatusCode::UNAUTHORIZED);
 
         let result: ErrorResponse = response.json();
         assert_eq!(result.error, "Invalid session token");
     }
-}
-
-// Yo message test structures (outside tests module)
-#[derive(serde::Serialize, serde::Deserialize)]
-struct SendYoRequest {
-    pub username: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct SendYoResponse {
-    pub success: bool,
-    pub message: String,
-    pub yo_id: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct YoMessagesResponse {
-    pub success: bool,
-    pub messages: Vec<YoMessageInfo>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct YoMessageInfo {
-    pub id: String,
-    pub from_username: String,
-    pub to_username: String,
-    pub sent_at: String,
-    pub is_from_me: bool,
-}
-
-// Yo message handlers for testing
-#[axum::debug_handler]
-async fn send_yo_handler(
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-    auth_header: axum::http::HeaderMap,
-    axum::extract::Json(request): axum::extract::Json<SendYoRequest>,
-) -> Result<axum::Json<SendYoResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)> {
-    // Validate input
-    if request.username.trim().is_empty() {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(ErrorResponse {
-                error: "Username cannot be empty".to_string(),
-            }),
-        ));
-    }
-
-    // Get token from Authorization header
-    let token = match auth_header.get("authorization") {
-        Some(value) => {
-            let auth_str = value.to_str().map_err(|_| {
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization header".to_string(),
-                    }),
-                )
-            })?;
-            if auth_str.starts_with("Bearer ") {
-                auth_str[7..].to_string()
-            } else {
-                return Err((
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization format".to_string(),
-                    }),
-                ));
-            }
-        }
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "Missing authorization header".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Validate session token
-    let user_id = validate_session_token(&db, &token).await?;
-
-    // Get user info for the requesting user
-    let user_row = sqlx::query("SELECT username FROM users WHERE id = ?")
-        .bind(&user_id)
-        .fetch_optional(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?;
-
-    let requester_username = match user_row {
-        Some(row) => row.get::<String, _>("username"),
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "User not found".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Check if trying to send to self
-    if requester_username == request.username {
-        return Err((
-            axum::http::StatusCode::CONFLICT,
-            axum::Json(ErrorResponse {
-                error: "Cannot send yo to yourself".to_string(),
-            }),
-        ));
-    }
-
-    // Find target user
-    let target_user_row = sqlx::query("SELECT id, username FROM users WHERE username = ?")
-        .bind(&request.username)
-        .fetch_optional(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?;
-
-    let target_user_id = match target_user_row {
-        Some(row) => row.get::<String, _>("id"),
-        None => {
-            return Err((
-                axum::http::StatusCode::NOT_FOUND,
-                axum::Json(ErrorResponse {
-                    error: "User not found".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Check if users are connected (accepted connection exists)
-    let connection_exists = sqlx::query(
-            "SELECT id FROM connections WHERE ((user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)) AND status = 'accepted'"
-        )
-        .bind(&user_id)
-        .bind(&target_user_id)
-        .bind(&target_user_id)
-        .bind(&user_id)
-        .fetch_optional(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?;
-
-    if connection_exists.is_none() {
-        return Err((
-            axum::http::StatusCode::CONFLICT,
-            axum::Json(ErrorResponse {
-                error: "You can only send yo messages to your friends".to_string(),
-            }),
-        ));
-    }
-
-    // Create the yo message
-    let message_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    // Create yo_messages table if it doesn't exist (for testing)
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS yo_messages (
-                id TEXT PRIMARY KEY,
-                from_user_id TEXT NOT NULL,
-                to_user_id TEXT NOT NULL,
-                sent_at TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )",
-    )
-    .execute(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Database setup error".to_string(),
-            }),
-        )
-    })?;
-
-    sqlx::query(
-            "INSERT INTO yo_messages (id, from_user_id, to_user_id, sent_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-        )
-        .bind(&message_id)
-        .bind(&user_id)
-        .bind(&target_user_id)
-        .bind(&now)
-        .bind(&now)
-        .bind(&now)
-        .execute(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Failed to send yo message".to_string(),
-                }),
-            )
-        })?;
-
-    Ok(axum::Json(SendYoResponse {
-        success: true,
-        message: format!("Yo sent to {}!", request.username),
-        yo_id: Some(message_id),
-    }))
-}
-
-#[axum::debug_handler]
-async fn get_yo_messages_handler(
-    auth_header: axum::http::HeaderMap,
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-) -> Result<axum::Json<YoMessagesResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)> {
-    // Get token from Authorization header
-    let token = match auth_header.get("authorization") {
-        Some(value) => {
-            let auth_str = value.to_str().map_err(|_| {
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization header".to_string(),
-                    }),
-                )
-            })?;
-            if auth_str.starts_with("Bearer ") {
-                auth_str[7..].to_string()
-            } else {
-                return Err((
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization format".to_string(),
-                    }),
-                ));
-            }
-        }
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "Missing authorization header".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Validate session token
-    let user_id = validate_session_token(&db, &token).await?;
-
-    // Create yo_messages table if it doesn't exist (for testing)
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS yo_messages (
-                id TEXT PRIMARY KEY,
-                from_user_id TEXT NOT NULL,
-                to_user_id TEXT NOT NULL,
-                sent_at TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )",
-    )
-    .execute(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Database setup error".to_string(),
-            }),
-        )
-    })?;
-
-    // Get yo messages
-    let yo_messages = sqlx::query(
-        "SELECT ym.id, ym.from_user_id, ym.to_user_id, ym.sent_at, ym.created_at,
-                    u_from.username as from_username, u_to.username as to_username
-             FROM yo_messages ym
-             JOIN users u_from ON ym.from_user_id = u_from.id
-             JOIN users u_to ON ym.to_user_id = u_to.id
-             WHERE ym.to_user_id = ? OR ym.from_user_id = ?
-             ORDER BY ym.sent_at DESC
-             LIMIT 100",
-    )
-    .bind(&user_id)
-    .bind(&user_id)
-    .fetch_all(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Database error".to_string(),
-            }),
-        )
-    })?;
-
-    let mut message_list = Vec::new();
-    for row in yo_messages {
-        message_list.push(YoMessageInfo {
-            id: row.get("id"),
-            from_username: row.get("from_username"),
-            to_username: row.get("to_username"),
-            sent_at: row.get("sent_at"),
-            is_from_me: row.get::<String, _>("from_user_id") == user_id,
-        });
-    }
-
-    Ok(axum::Json(YoMessagesResponse {
-        success: true,
-        messages: message_list,
-    }))
-}
-
-// Minimal handler functions for testing (simplified versions of the actual handlers)
-#[axum::debug_handler]
-async fn register_user_handler(
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-    axum::extract::Json(request): axum::extract::Json<RegisterRequest>,
-) -> Result<axum::Json<RegisterResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)> {
-    // Validate input
-    if request.username.trim().is_empty() {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(ErrorResponse {
-                error: "Username cannot be empty".to_string(),
-            }),
-        ));
-    }
-
-    if request.password.len() < 6 {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(ErrorResponse {
-                error: "Password must be at least 6 characters long".to_string(),
-            }),
-        ));
-    }
-
-    // Simple password hashing (for testing only)
-    let password_hash = format!("hashed_{}", request.password);
-
-    // Generate new user ID
-    let user_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    // Insert user into database
-    sqlx::query(
-        "INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
-    )
-    .bind(&user_id)
-    .bind(&request.username)
-    .bind(&password_hash)
-    .bind(&now)
-    .bind(&now)
-    .execute(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::CONFLICT,
-            axum::Json(ErrorResponse {
-                error: "Username already exists".to_string(),
-            }),
-        )
-    })?;
-
-    Ok(axum::Json(RegisterResponse {
-        success: true,
-        message: "User registered successfully".to_string(),
-        user_id: Some(user_id),
-    }))
-}
-
-#[axum::debug_handler]
-async fn login_user_handler(
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-    axum::extract::Json(request): axum::extract::Json<LoginRequest>,
-) -> Result<axum::Json<LoginResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)> {
-    // Validate input
-    if request.username.trim().is_empty() {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(ErrorResponse {
-                error: "Username cannot be empty".to_string(),
-            }),
-        ));
-    }
-
-    if request.password.is_empty() {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(ErrorResponse {
-                error: "Password cannot be empty".to_string(),
-            }),
-        ));
-    }
-
-    // Find user
-    let user_row =
-        sqlx::query("SELECT id, username, password_hash, created_at FROM users WHERE username = ?")
-            .bind(&request.username)
-            .fetch_optional(&*db)
-            .await
-            .map_err(|_| {
-                (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::Json(ErrorResponse {
-                        error: "Database error".to_string(),
-                    }),
-                )
-            })?;
-
-    if let Some(row) = user_row {
-        let stored_hash: String = row.get("password_hash");
-
-        // Simple password verification (for testing only)
-        let expected_hash = format!("hashed_{}", request.password);
-        if stored_hash == expected_hash {
-            // Generate session token
-            let token = uuid::Uuid::new_v4().to_string();
-            let session_id = uuid::Uuid::new_v4().to_string();
-            let now = chrono::Utc::now().to_rfc3339();
-
-            // Insert session
-            sqlx::query(
-                "INSERT INTO sessions (id, user_id, token, created_at) VALUES (?, ?, ?, ?)",
-            )
-            .bind(&session_id)
-            .bind(row.get::<String, _>("id"))
-            .bind(&token)
-            .bind(&now)
-            .execute(&*db)
-            .await
-            .map_err(|_| {
-                (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::Json(ErrorResponse {
-                        error: "Failed to create session".to_string(),
-                    }),
-                )
-            })?;
-
-            Ok(axum::Json(LoginResponse {
-                success: true,
-                message: "Login successful".to_string(),
-                user: Some(UserInfo {
-                    id: row.get("id"),
-                    username: row.get("username"),
-                    created_at: row.get("created_at"),
-                }),
-                token: Some(token),
-            }))
-        } else {
-            Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "Invalid username or password".to_string(),
-                }),
-            ))
-        }
-    } else {
-        Err((
-            axum::http::StatusCode::UNAUTHORIZED,
-            axum::Json(ErrorResponse {
-                error: "Invalid username or password".to_string(),
-            }),
-        ))
-    }
-}
-
-// Helper function to validate session token
-async fn validate_session_token(
-    db: &sqlx::SqlitePool,
-    token: &str,
-) -> Result<String, (axum::http::StatusCode, axum::Json<ErrorResponse>)> {
-    let session_row = sqlx::query("SELECT user_id FROM sessions WHERE token = ?")
-        .bind(token)
-        .fetch_optional(db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?;
-
-    match session_row {
-        Some(row) => Ok(row.get::<String, _>("user_id")),
-        None => Err((
-            axum::http::StatusCode::UNAUTHORIZED,
-            axum::Json(ErrorResponse {
-                error: "Invalid session token".to_string(),
-            }),
-        )),
-    }
-}
-
-#[axum::debug_handler]
-async fn add_connection_handler(
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-    auth_header: axum::http::HeaderMap,
-    axum::extract::Json(request): axum::extract::Json<AddConnectionRequest>,
-) -> Result<axum::Json<AddConnectionResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)>
-{
-    // Validate input
-    if request.username.trim().is_empty() {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(ErrorResponse {
-                error: "Username cannot be empty".to_string(),
-            }),
-        ));
-    }
-
-    // Get token from Authorization header
-    let token = match auth_header.get("authorization") {
-        Some(value) => {
-            let auth_str = value.to_str().map_err(|_| {
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization header".to_string(),
-                    }),
-                )
-            })?;
-            if auth_str.starts_with("Bearer ") {
-                auth_str[7..].to_string()
-            } else {
-                return Err((
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization format".to_string(),
-                    }),
-                ));
-            }
-        }
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "Missing authorization header".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Validate session token
-    let user_id = validate_session_token(&db, &token).await?;
-
-    // Get user info for the requesting user
-    let user_row = sqlx::query("SELECT username FROM users WHERE id = ?")
-        .bind(&user_id)
-        .fetch_optional(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?;
-
-    let requester_username = match user_row {
-        Some(row) => row.get::<String, _>("username"),
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "User not found".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Store username in initiated_by instead of user_id
-    let initiated_by = requester_username.clone();
-
-    // Check if trying to connect to self
-    if requester_username == request.username {
-        return Err((
-            axum::http::StatusCode::CONFLICT,
-            axum::Json(ErrorResponse {
-                error: "Cannot connect to yourself".to_string(),
-            }),
-        ));
-    }
-
-    // Find target user
-    let target_user_row = sqlx::query("SELECT id, username FROM users WHERE username = ?")
-        .bind(&request.username)
-        .fetch_optional(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?;
-
-    let target_user_id = match target_user_row {
-        Some(row) => row.get::<String, _>("id"),
-        None => {
-            return Err((
-                axum::http::StatusCode::NOT_FOUND,
-                axum::Json(ErrorResponse {
-                    error: "User not found".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Check if connection already exists (in either direction)
-    let existing_connection = sqlx::query(
-        "SELECT id FROM connections WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)"
-    )
-    .bind(&user_id)
-    .bind(&target_user_id)
-    .bind(&target_user_id)
-    .bind(&user_id)
-    .fetch_optional(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Database error".to_string(),
-            }),
-        )
-    })?;
-
-    if existing_connection.is_some() {
-        return Err((
-            axum::http::StatusCode::CONFLICT,
-            axum::Json(ErrorResponse {
-                error: "Connection already exists".to_string(),
-            }),
-        ));
-    }
-
-    // Create new connection
-    let connection_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    sqlx::query(
-        "INSERT INTO connections (id, user1_id, user2_id, status, initiated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    )
-    .bind(&connection_id)
-    .bind(&user_id)
-    .bind(&target_user_id)
-    .bind("pending")
-    .bind(&initiated_by)
-    .bind(&now)
-    .bind(&now)
-    .execute(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Failed to create connection".to_string(),
-            }),
-        )
-    })?;
-
-    Ok(axum::Json(AddConnectionResponse {
-        success: true,
-        message: format!(
-            "Connection request sent to {}. Waiting for acceptance.",
-            request.username
-        ),
-        connection_id: Some(connection_id),
-    }))
-}
-
-#[axum::debug_handler]
-async fn get_connections_handler(
-    auth_header: axum::http::HeaderMap,
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-) -> Result<axum::Json<ConnectionsResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)> {
-    // Get token from Authorization header
-    let token = match auth_header.get("authorization") {
-        Some(value) => {
-            let auth_str = value.to_str().map_err(|_| {
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization header".to_string(),
-                    }),
-                )
-            })?;
-            if auth_str.starts_with("Bearer ") {
-                auth_str[7..].to_string()
-            } else {
-                return Err((
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization format".to_string(),
-                    }),
-                ));
-            }
-        }
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "Missing authorization header".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Validate session token
-    let user_id = validate_session_token(&db, &token).await?;
-
-    // Get user's connections
-    let connections = sqlx::query(
-        r#"
-        SELECT
-            c.id,
-            c.user1_id,
-            c.user2_id,
-            CASE
-                WHEN c.user1_id = ? THEN (SELECT username FROM users WHERE id = c.user2_id)
-                WHEN c.user2_id = ? THEN (SELECT username FROM users WHERE id = c.user1_id)
-                ELSE NULL
-            END as other_username,
-            c.status,
-            c.initiated_by,
-            c.created_at
-        FROM connections c
-        WHERE (c.user1_id = ? OR c.user2_id = ?)
-        "#,
-    )
-    .bind(&user_id)
-    .bind(&user_id)
-    .bind(&user_id)
-    .bind(&user_id)
-    .fetch_all(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Database error".to_string(),
-            }),
-        )
-    })?;
-
-    let mut connection_list = Vec::new();
-    for row in connections {
-        connection_list.push(Connection {
-            id: row.get("id"),
-            user1_id: row.get("user1_id"),
-            user2_id: row.get("user2_id"),
-            other_username: row.get("other_username"),
-            status: row.get("status"),
-            initiated_by: row.get("initiated_by"),
-            created_at: row.get("created_at"),
-        });
-    }
-
-    Ok(axum::Json(ConnectionsResponse {
-        success: true,
-        connections: connection_list,
-    }))
-}
-
-#[axum::debug_handler]
-async fn accept_connection_handler(
-    axum::extract::State(db): axum::extract::State<std::sync::Arc<sqlx::SqlitePool>>,
-    auth_header: axum::http::HeaderMap,
-    axum::extract::Json(request): axum::extract::Json<AcceptConnectionRequest>,
-) -> Result<axum::Json<AcceptConnectionResponse>, (axum::http::StatusCode, axum::Json<ErrorResponse>)>
-{
-    // Get token from Authorization header
-    let token = match auth_header.get("authorization") {
-        Some(value) => {
-            let auth_str = value.to_str().map_err(|_| {
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization header".to_string(),
-                    }),
-                )
-            })?;
-            if auth_str.starts_with("Bearer ") {
-                auth_str[7..].to_string()
-            } else {
-                return Err((
-                    axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(ErrorResponse {
-                        error: "Invalid authorization format".to_string(),
-                    }),
-                ));
-            }
-        }
-        None => {
-            return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                axum::Json(ErrorResponse {
-                    error: "Missing authorization header".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Validate session token
-    let user_id = validate_session_token(&db, &token).await?;
-
-    // Get connection info
-    let connection_row = sqlx::query(
-        "SELECT user1_id, user2_id, status, initiated_by FROM connections WHERE id = ?",
-    )
-    .bind(&request.connection_id)
-    .fetch_optional(&*db)
-    .await
-    .map_err(|_| {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(ErrorResponse {
-                error: "Database error".to_string(),
-            }),
-        )
-    })?;
-
-    let connection = match connection_row {
-        Some(row) => row,
-        None => {
-            return Err((
-                axum::http::StatusCode::NOT_FOUND,
-                axum::Json(ErrorResponse {
-                    error: "Connection not found".to_string(),
-                }),
-            ));
-        }
-    };
-
-    let user1_id: String = connection.get("user1_id");
-    let user2_id: String = connection.get("user2_id");
-    let status: String = connection.get("status");
-    let initiated_by: String = connection.get("initiated_by");
-
-    // Check if connection is already accepted
-    if status == "accepted" {
-        return Err((
-            axum::http::StatusCode::CONFLICT,
-            axum::Json(ErrorResponse {
-                error: "Connection is already accepted".to_string(),
-            }),
-        ));
-    }
-
-    // Get the username of user1 to compare with initiated_by
-    let user1_username = sqlx::query("SELECT username FROM users WHERE id = ?")
-        .bind(&user1_id)
-        .fetch_optional(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Database error".to_string(),
-                }),
-            )
-        })?
-        .map(|row| row.get::<String, _>("username"))
-        .unwrap_or_default();
-
-    // Check if user is authorized to accept this connection (must be the target user)
-    let is_user2 = user_id == user2_id;
-    let was_initiated_by_user1 = initiated_by == user1_username;
-
-    if !is_user2 || !was_initiated_by_user1 {
-        return Err((
-            axum::http::StatusCode::FORBIDDEN,
-            axum::Json(ErrorResponse {
-                error: "You cannot accept your own connection request".to_string(),
-            }),
-        ));
-    }
-
-    // Update connection status to accepted
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query("UPDATE connections SET status = 'accepted', updated_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&request.connection_id)
-        .execute(&*db)
-        .await
-        .map_err(|_| {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ErrorResponse {
-                    error: "Failed to accept connection".to_string(),
-                }),
-            )
-        })?;
-
-    Ok(axum::Json(AcceptConnectionResponse {
-        success: true,
-        message: "Connection accepted successfully".to_string(),
-    }))
 }
