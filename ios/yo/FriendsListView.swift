@@ -29,6 +29,27 @@ struct FriendsListView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
+                    .padding(40)
+                    .background {
+                        RoundedRectangle(cornerRadius: 25)
+                            .fill(.ultraThinMaterial)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 25)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [
+                                                Color.white.opacity(0.3),
+                                                Color.white.opacity(0.1),
+                                                Color.clear
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 1
+                                    )
+                            }
+                    }
+                    .shadow(color: .black.opacity(0.1), radius: 15, x: 0, y: 8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if !errorMessage.isEmpty {
                     VStack(spacing: 20) {
@@ -49,10 +70,11 @@ struct FriendsListView: View {
                         Button("Try Again") {
                             loadConnections()
                         }
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .buttonStyle(.glass)
+                        .glassEffect(.regular.interactive())
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if connections.isEmpty {
@@ -74,25 +96,30 @@ struct FriendsListView: View {
                         Button("Refresh") {
                             loadConnections()
                         }
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .buttonStyle(.glass)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(connections) { connection in
-                        ConnectionRow(
-                            connection: connection,
-                            isAccepting: acceptingConnectionId == connection.id,
-                            isRejecting: rejectingConnectionId == connection.id,
-                            onAcceptConnection: { connectionId in
-                                acceptConnection(connectionId: connectionId)
-                            },
-                            onRejectConnection: { connectionId in
-                                rejectConnection(connectionId: connectionId)
+                    ScrollView {
+                        GlassEffectContainer(spacing: 12.0) {
+                            ForEach(connections) { connection in
+                                ConnectionRow(
+                                    connection: connection,
+                                    isAccepting: acceptingConnectionId == connection.id,
+                                    isRejecting: rejectingConnectionId == connection.id,
+                                    onAcceptConnection: { connectionId in
+                                        acceptConnection(connectionId: connectionId)
+                                    },
+                                    onRejectConnection: { connectionId in
+                                        rejectConnection(connectionId: connectionId)
+                                    }
+                                )
                             }
-                        )
+                        }
+                        .padding()
                     }
                     .refreshable {
                         loadConnections()
@@ -101,13 +128,14 @@ struct FriendsListView: View {
             }
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
                         showingAddFriend = true
                     } label: {
                         Image(systemName: "person.badge.plus")
-                            .foregroundColor(.blue)
                     }
                 }
 
@@ -218,16 +246,17 @@ struct ConnectionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar placeholder
-            Circle()
-                .fill(statusColor.opacity(0.2))
-                .frame(width: 50, height: 50)
-                .overlay {
-                    Text(String(connection.username.prefix(1)).uppercased())
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(statusColor)
-                }
+            // Liquid Glass avatar
+            ZStack {
+                Circle()
+                    .frame(width: 50, height: 50)
+                    .glassEffect(in: .rect(cornerRadius: 25.0))
+                
+                Text(String(connection.username.prefix(1)).uppercased())
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(statusColor)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -255,9 +284,8 @@ struct ConnectionRow: View {
                                     }
                                 }
                                 .frame(width: 60, height: 32)
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(16)
+                                .buttonStyle(.glass)
+                                .glassEffect(.regular.tint(.green).interactive())
                                 .disabled(isAccepting || isRejecting)
                                 
                                 Button {
@@ -273,9 +301,8 @@ struct ConnectionRow: View {
                                     }
                                 }
                                 .frame(width: 60, height: 32)
-                                .background(Color.red)
-                                .foregroundColor(.white)
-                                .cornerRadius(16)
+                                .buttonStyle(.glass)
+                                .glassEffect(.regular.tint(.red).interactive())
                                 .disabled(isAccepting || isRejecting)
                             }
                         } else {
@@ -283,11 +310,10 @@ struct ConnectionRow: View {
                             Text("REQUEST SENT")
                                 .font(.caption2)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.2))
-                                .cornerRadius(4)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
                         }
                     } else if connection.connectionStatus?.lowercased() == "accepted" {
                         // Accepted friend - show "Send Yo" button
@@ -299,9 +325,8 @@ struct ConnectionRow: View {
                                 .font(.system(size: 12, weight: .semibold))
                         }
                         .frame(width: 80, height: 32)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
+                        .buttonStyle(.glass)
+                        .glassEffect(.regular.interactive())
                     } else {
                         // Rejected or other status - show status indicator
                         HStack(spacing: 4) {
@@ -317,7 +342,8 @@ struct ConnectionRow: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 20.0))
     }
 
     private var statusColor: Color {

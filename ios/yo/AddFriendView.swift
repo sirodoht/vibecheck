@@ -26,7 +26,7 @@ struct AddFriendView: View {
                     Image(systemName: "person.badge.plus")
                         .resizable()
                         .frame(width: 60, height: 60)
-                        .foregroundColor(.blue)
+                        .foregroundColor(.primary)
 
                     Text("Add Friend")
                         .font(.largeTitle)
@@ -44,10 +44,12 @@ struct AddFriendView: View {
                 // Username input
                 VStack(spacing: 16) {
                     TextField("Username", text: $username)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.body)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                        .font(.body)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
                         .padding(.horizontal)
 
                     // Error message
@@ -74,10 +76,15 @@ struct AddFriendView: View {
                             Text(isLoading ? "Sending..." : "Send Friend Request")
                         }
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(isFormValid && !isLoading ? Color.blue : Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.vertical, 16)
+                        .padding(.horizontal, 24)
+                        .buttonStyle(.glass)
+                        .glassEffect(
+                            isFormValid && !isLoading ? 
+                                .regular.interactive() : 
+                                .regular.tint(.gray)
+                        )
                     }
                     .disabled(!isFormValid || isLoading)
                     .padding(.horizontal)
@@ -88,6 +95,8 @@ struct AddFriendView: View {
             }
             .navigationTitle("Add Friend")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
