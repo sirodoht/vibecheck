@@ -17,30 +17,6 @@ pub use database::Database;
 pub type AppState = Arc<Database>;
 
 // Template structs
-#[derive(Template)]
-#[template(path = "index.html")]
-pub struct IndexTemplate {
-    pub users: Vec<User>,
-    pub total_users: i64,
-}
-
-#[derive(Template)]
-#[template(path = "friends.html")]
-pub struct FriendsTemplate {
-    pub users_with_friends: Vec<UserWithFriends>,
-    pub total_users_with_friends: i64,
-}
-
-#[derive(Template)]
-#[template(path = "admin.html")]
-pub struct AdminTemplate {
-    pub users: Vec<User>,
-    pub next_user_name: String,
-    pub pending_connections: Vec<AdminConnection>,
-    pub accepted_connections: Vec<AdminConnection>,
-    pub user_pairs: Vec<UserPair>,
-}
-
 #[derive(Serialize)]
 pub struct UserPair {
     pub from_username: String,
@@ -51,6 +27,18 @@ pub struct UserPair {
 #[derive(Template)]
 #[template(path = "swagger.html")]
 pub struct SwaggerTemplate;
+
+#[derive(Template)]
+#[template(path = "dashboard.html")]
+pub struct DashboardTemplate {
+    pub users: Vec<User>,
+    pub next_user_name: String,
+    pub users_with_friends: Vec<UserWithFriends>,
+    pub total_users_with_friends: i64,
+    pub pending_connections: Vec<AdminConnection>,
+    pub accepted_connections: Vec<AdminConnection>,
+    pub user_pairs: Vec<UserPair>,
+}
 
 #[derive(Serialize)]
 pub struct UserWithFriends {
@@ -190,29 +178,21 @@ pub struct YoMessageInfo {
 }
 
 // Web Handler functions
-pub async fn index(State(db): State<AppState>) -> impl IntoResponse {
-    let users = db.get_all_users().await.unwrap_or_default();
-    let total_users = users.len() as i64;
-    let template = IndexTemplate { users, total_users };
+pub async fn swagger() -> impl IntoResponse {
+    let template = SwaggerTemplate;
     Html(template.render().unwrap())
 }
 
-pub async fn friends(State(db): State<AppState>) -> impl IntoResponse {
-    let users_with_friends = db.get_users_with_friends().await.unwrap_or_default();
-    let total_users_with_friends = users_with_friends.len() as i64;
-    let template = FriendsTemplate {
-        users_with_friends,
-        total_users_with_friends,
-    };
-    Html(template.render().unwrap())
-}
-
-pub async fn admin(State(db): State<AppState>) -> impl IntoResponse {
+pub async fn dashboard(State(db): State<AppState>) -> impl IntoResponse {
     let users = db.get_all_users().await.unwrap_or_default();
 
     // Calculate next user name
     let user_count = users.len();
     let next_user_name = format!("user{}", user_count + 1);
+
+    // Get users with friends for connection display
+    let users_with_friends = db.get_users_with_friends().await.unwrap_or_default();
+    let total_users_with_friends = users_with_friends.len() as i64;
 
     // Get admin connections
     let admin_connections = db.get_admin_connections().await.unwrap_or_default();
@@ -249,18 +229,15 @@ pub async fn admin(State(db): State<AppState>) -> impl IntoResponse {
         }
     }
 
-    let template = AdminTemplate {
+    let template = DashboardTemplate {
         users,
         next_user_name,
+        users_with_friends,
+        total_users_with_friends,
         pending_connections,
         accepted_connections,
         user_pairs,
     };
-    Html(template.render().unwrap())
-}
-
-pub async fn swagger() -> impl IntoResponse {
-    let template = SwaggerTemplate;
     Html(template.render().unwrap())
 }
 
@@ -980,9 +957,7 @@ impl utoipa::Modify for SecurityAddon {
 // App creation function
 pub fn create_app(db: AppState) -> Router {
     Router::new()
-        .route("/", get(index))
-        .route("/friends", get(friends))
-        .route("/admin", get(admin))
+        .route("/", get(dashboard))
         .route("/swagger-ui", get(swagger))
         .route("/admin/create-user/{username}", get(admin_create_user))
         .route(
