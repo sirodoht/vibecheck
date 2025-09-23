@@ -158,9 +158,15 @@ struct FriendsListView: View {
 
     private func acceptConnection(connectionId: String) {
         acceptingConnectionId = connectionId
+        
+        // Find the connection to get the username
+        guard let connection = connections.first(where: { $0.id == connectionId }) else {
+            acceptingConnectionId = nil
+            return
+        }
 
         // Using production API
-        AuthService.shared.acceptConnectionRequest(connectionId: connectionId) { result in
+        AuthService.shared.acceptConnectionRequest(username: connection.username) { result in
             DispatchQueue.main.async {
                 acceptingConnectionId = nil
 
@@ -178,9 +184,15 @@ struct FriendsListView: View {
 
     private func rejectConnection(connectionId: String) {
         rejectingConnectionId = connectionId
+        
+        // Find the connection to get the username
+        guard let connection = connections.first(where: { $0.id == connectionId }) else {
+            rejectingConnectionId = nil
+            return
+        }
 
         // Using production API
-        AuthService.shared.rejectConnectionRequest(connectionId: connectionId) { result in
+        AuthService.shared.rejectConnectionRequest(username: connection.username) { result in
             DispatchQueue.main.async {
                 rejectingConnectionId = nil
 
@@ -228,24 +240,44 @@ struct ConnectionRow: View {
                     // Different UI based on connection status and type
                     if connection.connectionStatus?.lowercased() == "pending" {
                         if connection.isIncoming == true {
-                            // Send "yo" to incoming friend request
-                            Button {
-                                onAcceptConnection(connection.id)
-                            } label: {
-                                if isAccepting {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .tint(.white)
-                                } else {
-                                    Text("Send Yo")
-                                        .font(.system(size: 12, weight: .semibold))
+                            // Incoming friend request - show Accept/Reject buttons
+                            HStack(spacing: 8) {
+                                Button {
+                                    onAcceptConnection(connection.id)
+                                } label: {
+                                    if isAccepting {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .tint(.white)
+                                    } else {
+                                        Text("Accept")
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
                                 }
+                                .frame(width: 60, height: 32)
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(16)
+                                .disabled(isAccepting || isRejecting)
+                                
+                                Button {
+                                    onRejectConnection(connection.id)
+                                } label: {
+                                    if isRejecting {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .tint(.white)
+                                    } else {
+                                        Text("Reject")
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
+                                }
+                                .frame(width: 60, height: 32)
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .cornerRadius(16)
+                                .disabled(isAccepting || isRejecting)
                             }
-                            .frame(width: 80, height: 32)
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(16)
-                            .disabled(isAccepting || isRejecting)
                         } else {
                             // Outgoing request - show "Request Sent"
                             Text("REQUEST SENT")
@@ -321,18 +353,15 @@ struct ConnectionRow: View {
 
 #Preview("Connection Row") {
     let apiConnection = APIConnection(
-        id: "1",
-        user1_id: "other_user",
-        user2_id: "current_user",
-        other_username: "user4",
+        initiator: "other_user",
+        other: "user4",
         status: "pending",
-        initiated_by: "other_user",
         created_at: "2025-09-20T10:00:00Z"
     )
 
     List {
         ConnectionRow(
-            connection: Connection(from: apiConnection, currentUserId: "current_user"),
+            connection: Connection(from: apiConnection, currentUsername: "current_user"),
             isAccepting: false,
             isRejecting: false,
             onAcceptConnection: { _ in },

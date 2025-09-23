@@ -126,8 +126,8 @@ struct AddFriendView: View {
                 isLoading = false
 
                 switch result {
-                case .success(let response):
-                    successMessage = response.message ?? "Friend request sent successfully!"
+                case .success(_):
+                    successMessage = "Friend request sent successfully!"
                     showingSuccessAlert = true
                     username = "" // Clear the field
 
