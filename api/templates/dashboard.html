@@ -1,44 +1,38 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
-
-    <div style="background-color: #f8f9fa; padding: 1.5rem;  border: 1px solid #dee2e6;">
-
-        <div style="margin-bottom: 2rem;">
-            <h3 style="margin-bottom: 1rem; color: #495057;">Create New User</h3>
-            <a href="/admin/create-user/{{next_user_name}}" style="display: inline-block; background-color: white; color: #28a745; text-decoration: none; padding: 0.75rem 1.5rem; border: 2px solid #28a745; border-radius: 6px; font-weight: bold; margin-bottom: 1rem; transition: all 0.3s ease;"
-               onmouseover="this.style.backgroundColor='#28a745'; this.style.color='white';"
-               onmouseout="this.style.backgroundColor='white'; this.style.color='#28a745';">
+<div class="dashboard-grid">
+    <div class="section-container">
+        <div class="create-user-section">
+            <h3>Create New User</h3>
+            <a href="/admin/create-user/{{next_user_name}}" class="btn btn-create btn-large">
                 Create Next User ({{next_user_name}})
             </a>
-            <p style="color: #6c757d; font-size: 0.9rem;">Default password: "password123"</p>
+            <p style="margin-top: 0.5rem;">Default password: "password123"</p>
         </div>
 
         <div>
-            <h3 style="margin-bottom: 1rem; color: #495057;">All Users</h3>
-            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6;  background-color: white;">
+            <h3>All Users</h3>
+            <div class="scroll-container">
                 {% if users.len() > 0 %}
                     {% for user in users %}
-                        <div style="padding: 0.75rem; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; align-items: center;">
-                            <div>
+                        <div class="user-item">
+                            <div class="user-info">
                                 <strong>{{user.username}}</strong>
                                 <br>
-                                <small style="color: #6c757d;">{{user.id}}</small>
+                                <span class="user-id">{{user.id}}</span>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div class="button-group">
                                 <a href="/admin/delete-user/{{user.id}}"
                                    onclick="return confirm('Are you sure you want to delete user {{user.username}}? This will also delete all their sessions and connections.')"
-                                   style="display: inline-block; background-color: white; color: #dc3545; text-decoration: none; padding: 0.5rem 0.75rem; border: 2px solid #dc3545; border-radius: 4px; font-size: 0.8rem; font-weight: bold; transition: all 0.3s ease;"
-                                   onmouseover="this.style.backgroundColor='#dc3545'; this.style.color='white';"
-                                   onmouseout="this.style.backgroundColor='white'; this.style.color='#dc3545';">
+                                   class="btn btn-delete btn-small">
                                     Delete
                                 </a>
                             </div>
                         </div>
                     {% endfor %}
                 {% else %}
-                    <div style="padding: 1rem; text-align: center; color: #6c757d;">
+                    <div class="empty-state">
                         No users yet
                     </div>
                 {% endif %}
@@ -47,74 +41,68 @@
     </div>
 
     <!-- Connection Management -->
-    <div style="background-color: #f8f9fa; padding: 1.5rem;  border: 1px solid #dee2e6;">
-        <h2 style="color: #2c3e50; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+    <div class="section-container">
+        <h2 class="section-header">
             Connection Management
-            <span style="font-size: 0.9rem; color: #6c757d;">{{pending_connections.len()}} pending, {{accepted_connections.len()}} accepted</span>
+            <span class="section-subtitle">{{pending_connections.len()}} pending, {{accepted_connections.len()}} accepted</span>
         </h2>
 
-        <div style="margin-bottom: 2rem;">
-            <h3 style="margin-bottom: 1rem; color: #495057;">Create Connection Request</h3>
+        <div class="connection-create-section">
+            <h3>Create Connection Request</h3>
             {% if users.len() >= 2 %}
-                <div style="margin-bottom: 1rem;">
-                    <p style="color: #6c757d; margin-bottom: 1rem;">Quick connections between users:</p>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.5rem; max-height: 300px; overflow-y: auto;">
+                <div>
+                    <p class="help-text">Quick connections between users:</p>
+                    <div class="connection-grid">
                         {% for user_pair in user_pairs %}
                             {% if user_pair.connection_exists %}
-                                <div style="display: block; padding: 0.5rem; background-color: #e9ecef; border: 1px solid #ced4da;  color: #6c757d; font-size: 0.9rem; text-align: center; font-style: italic;">
+                                <div class="connection-exists">
                                     {{user_pair.from_username}} → {{user_pair.to_username}} (exists)
                                 </div>
                             {% else %}
                                 <a href="/admin/create-connection/{{user_pair.from_username}}/{{user_pair.to_username}}"
-                                   style="display: block; padding: 0.5rem; background-color: white; border: 2px solid #007bff; border-radius: 4px; text-decoration: none; color: #007bff; font-size: 0.9rem; text-align: center; transition: all 0.3s ease;"
-                                   onmouseover="this.style.backgroundColor='#007bff'; this.style.color='white';"
-                                   onmouseout="this.style.backgroundColor='white'; this.style.color='#007bff';">
+                                   class="btn btn-connect">
                                     {{user_pair.from_username}} → {{user_pair.to_username}}
                                 </a>
                             {% endif %}
                         {% endfor %}
                     </div>
-                    <p style="color: #6c757d; font-size: 0.8rem; margin-top: 0.5rem; font-style: italic;">
+                    <p class="help-text-small">
                         Note: Only one connection can exist between any two users (in either direction)
                     </p>
                 </div>
             {% else %}
-                <p style="color: #6c757d; font-style: italic;">Need at least 2 users to create connections</p>
+                <p class="help-text">Need at least 2 users to create connections</p>
             {% endif %}
         </div>
 
         <div>
-            <h3 style="margin-bottom: 1rem; color: #495057;">Pending Requests ({{pending_connections.len()}})</h3>
-            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6;  background-color: white;">
+            <h3>Pending Requests ({{pending_connections.len()}})</h3>
+            <div class="scroll-container-small">
                 {% if pending_connections.len() > 0 %}
                     {% for connection in pending_connections %}
-                        <div style="padding: 1rem; border-bottom: 1px solid #f1f3f4;">
-                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                        <div class="connection-item">
+                            <div class="connection-info">
                                 <div>
                                     <strong>{{connection.initiator_username}}</strong> → <strong>{{connection.target_username}}</strong>
                                     <br>
-                                    <small style="color: #6c757d;">{{connection.created_at}}</small>
+                                    <span class="user-id">{{connection.created_at}}</span>
                                 </div>
-                                <span style="background-color: #ffc107; color: #212529; padding: 0.25rem 0.5rem;  font-size: 0.8rem; font-weight: bold;">Pending</span>
+                                <span class="status-badge status-pending">Pending</span>
                             </div>
-                            <div style="display: flex; gap: 0.5rem;">
+                            <div class="connection-actions">
                                 <a href="/admin/accept-connection/{{connection.id}}"
-                                   style="display: inline-block; background-color: white; color: #28a745; text-decoration: none; padding: 0.5rem 1rem; border: 2px solid #28a745; border-radius: 4px; font-size: 0.9rem; font-weight: bold; transition: all 0.3s ease;"
-                                   onmouseover="this.style.backgroundColor='#28a745'; this.style.color='white';"
-                                   onmouseout="this.style.backgroundColor='white'; this.style.color='#28a745';">
+                                   class="btn btn-accept">
                                     Accept
                                 </a>
                                 <a href="/admin/reject-connection/{{connection.id}}"
-                                   style="display: inline-block; background-color: white; color: #dc3545; text-decoration: none; padding: 0.5rem 1rem; border: 2px solid #dc3545; border-radius: 4px; font-size: 0.9rem; font-weight: bold; transition: all 0.3s ease;"
-                                   onmouseover="this.style.backgroundColor='#dc3545'; this.style.color='white';"
-                                   onmouseout="this.style.backgroundColor='white'; this.style.color='#dc3545';">
+                                   class="btn btn-reject">
                                     Reject
                                 </a>
                             </div>
                         </div>
                     {% endfor %}
                 {% else %}
-                    <div style="padding: 1rem; text-align: center; color: #6c757d;">
+                    <div class="empty-state">
                         No pending requests
                     </div>
                 {% endif %}
@@ -123,33 +111,33 @@
     </div>
 </div>
 
-<div style="background-color: #f8f9fa; padding: 1.5rem;  border: 1px solid #dee2e6; margin-bottom: 2rem;">
-    <h2 style="color: #2c3e50; margin-bottom: 1rem;">Connections</h2>
+<div class="section-container">
+    <h2>Connections</h2>
 
     {% if users_with_friends.len() > 0 %}
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem;">
+        <div class="connections-display">
             {% for user_with_friends in users_with_friends %}
-                <div style="padding: 1.5rem; background-color: white; border: 1px solid #e9ecef; ">
-                    <div style="margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #007bff;">
-                        <h3 style="color: #2c3e50; margin-bottom: 0.5rem; font-size: 1.4rem; font-weight: bold;">
+                <div class="user-card">
+                    <div class="user-card-header">
+                        <h3 class="user-card-title">
                             {{user_with_friends.username}}
                         </h3>
-                        <p style="color: #6c757d; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                        <p class="connection-count">
                             {{user_with_friends.friends.len()}} connection{% if user_with_friends.friends.len() != 1 %}s{% endif %}
                         </p>
                     </div>
 
                     <div>
                         {% for friend in user_with_friends.friends %}
-                            <div style="padding: 0.75rem; background-color: #f8f9fa; border: 1px solid #dee2e6;  margin-bottom: 0.5rem;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div style="flex: 1;">
+                            <div class="friend-item">
+                                <div class="friend-info">
+                                    <div class="friend-name">
                                         {% if friend.status == "accepted" %}
-                                            <span style="color: #28a745; font-weight: bold; font-size: 1.1rem;">{{friend.username}}</span>
+                                            <span class="friend-name accepted">{{friend.username}}</span>
                                         {% else %}
-                                            <span style="color: #ffc107; font-weight: bold; font-size: 1.1rem;">{{friend.username}}</span>
+                                            <span class="friend-name pending">{{friend.username}}</span>
                                         {% endif %}
-                                        <p style="color: #6c757d; font-size: 0.8rem; margin: 0.25rem 0 0 0;">
+                                        <p class="friend-timestamp">
                                             {% if friend.status == "accepted" %}
                                                 Connected: {{friend.created_at}}
                                             {% else %}
@@ -159,9 +147,9 @@
                                     </div>
                                     <div>
                                         {% if friend.status == "accepted" %}
-                                            <span style="background-color: #28a745; color: white; padding: 0.3rem 0.6rem;  font-size: 0.8rem; font-weight: bold;">Friends</span>
+                                            <span class="status-badge status-friends">Friends</span>
                                         {% else %}
-                                            <span style="background-color: #ffc107; color: #212529; padding: 0.3rem 0.6rem;  font-size: 0.8rem; font-weight: bold;">Pending</span>
+                                            <span class="status-badge status-pending">Pending</span>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -172,7 +160,7 @@
             {% endfor %}
         </div>
     {% else %}
-        <div style="padding: 2rem; background-color: #fff3cd; border-left: 4px solid #ffc107; ">
+        <div class="alert-info">
             <h3>No Connections Yet</h3>
             <p>No users have connected yet. Users can add friends using the <code>/api/connections</code> endpoint.</p>
         </div>
